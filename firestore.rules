@@ -1,0 +1,149 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'aaravmalik128@gmail.com' ||
+        request.auth.token.email == 'harendramalik090@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // App Config & Settings - Real-time readable by user app, writable by admin
+    match /app-config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    match /appSettings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Dynamic Banners
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Dynamic Home Sections
+    match /homeSections/{sectionId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Announcements
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Educational Subjects - Real-time sync with Admin Panel
+    match /subjects/{subjectId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Topics / Chapters - Real-time sync with Admin Panel
+    match /topics/{topicId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Lessons / Video Lectures - Real-time sync with Admin Panel
+    match /lectures/{lectureId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Notes - Real-time sync with Admin Panel
+    match /notes/{noteId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Previous Year Questions (PYQs)
+    match /pyqs/{pyqId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // MCQs - Real-time sync with Admin Panel
+    match /mcqs/{mcqId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Mock Tests - Real-time sync with Admin Panel
+    match /mockTests/{mockId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // User Profiles
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin() || isSignedIn();
+      allow list: if isAdmin() || isSignedIn();
+      allow create: if isOwner(userId) && incoming().uid == userId;
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Mock Test Attempts
+    match /mockAttempts/{attemptId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().uid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && existing().uid == request.auth.uid);
+    }
+
+    // Topic MCQ Attempts
+    match /mcqAttempts/{attemptId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().uid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && existing().uid == request.auth.uid);
+    }
+
+    // User Progress
+    match /progress/{progressId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().uid == request.auth.uid;
+      allow update: if isSignedIn() && (existing().uid == request.auth.uid || incoming().uid == request.auth.uid);
+      allow delete: if isSignedIn() && existing().uid == request.auth.uid;
+    }
+
+    // Test connection documents
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Remix Edu Veda",
+  "description": "Mobile-first educational platform for lectures, revision notes, interactive MCQs, mock tests, and AI study assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

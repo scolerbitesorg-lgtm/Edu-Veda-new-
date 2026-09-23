@@ -1,0 +1,383 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with student metadata and role",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "maxLength": 100, "description": "Student full name" },
+        "email": { "type": "string", "maxLength": 120, "description": "Student email address" },
+        "mobile": { "type": "string", "maxLength": 20, "description": "Student mobile phone number" },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "User role, defaults strictly to user" },
+        "avatar": { "type": "string", "maxLength": 500, "description": "Profile picture URL" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Curriculum category or examination stream configured by Admin",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120, "description": "Category name (e.g. Science, UPSC, SSC)" },
+        "hindiName": { "type": "string", "maxLength": 120, "description": "Hindi category name" },
+        "description": { "type": "string", "maxLength": 500, "description": "Category description" },
+        "icon": { "type": "string", "maxLength": 50, "description": "Lucide icon identifier or emoji" },
+        "color": { "type": "string", "maxLength": 50, "description": "Theme color code or CSS class" },
+        "order": { "type": "number", "description": "Display order sequence" },
+        "status": { "type": "string", "description": "Publish status (active/published)" },
+        "published": { "type": "boolean", "description": "Whether category is active" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["name"]
+    },
+    "Banner": {
+      "title": "Banner",
+      "description": "Dynamic promotional or informational hero banner controlled by Admin",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200, "description": "Banner heading" },
+        "subtitle": { "type": "string", "maxLength": 300, "description": "Banner secondary tagline" },
+        "image": { "type": "string", "maxLength": 1000, "description": "Banner image URL" },
+        "buttonText": { "type": "string", "maxLength": 50, "description": "Call to action button text" },
+        "buttonUrl": { "type": "string", "maxLength": 500, "description": "Target internal route or external URL" },
+        "buttonVisible": { "type": "boolean", "description": "Whether CTA button is visible" },
+        "actionType": { "type": "string", "description": "Action trigger type (link, test, subject, ai)" },
+        "order": { "type": "number", "description": "Display sequence order" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["title"]
+    },
+    "HomeSection": {
+      "title": "HomeSection",
+      "description": "Admin-configurable dynamic sections on the home page",
+      "type": "object",
+      "properties": {
+        "sectionId": { "type": "string", "maxLength": 50, "description": "Section identifier (banners, categories, featuredSubjects, featuredTests, pyqs, announcements)" },
+        "title": { "type": "string", "maxLength": 120, "description": "Section heading title" },
+        "subtitle": { "type": "string", "maxLength": 250, "description": "Section secondary description" },
+        "order": { "type": "number", "description": "Display order index" },
+        "visible": { "type": "boolean", "description": "Visibility toggle controlled by Admin" },
+        "itemLimit": { "type": "number", "description": "Maximum items to show" }
+      },
+      "required": ["sectionId", "title", "visible"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Important notifications or exam alerts issued by Admin",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200, "description": "Notice headline" },
+        "message": { "type": "string", "maxLength": 1000, "description": "Notice detailed description" },
+        "badge": { "type": "string", "maxLength": 50, "description": "Alert badge (e.g. New, Urgent, Exam)" },
+        "link": { "type": "string", "maxLength": 500, "description": "Optional action link" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["title", "message"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "Educational subject category published by administration",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120, "description": "Subject title" },
+        "hindiName": { "type": "string", "maxLength": 120, "description": "Hindi subject title" },
+        "description": { "type": "string", "maxLength": 500, "description": "Subject description" },
+        "categoryId": { "type": "string", "maxLength": 128, "description": "Parent category ID" },
+        "icon": { "type": "string", "maxLength": 50, "description": "Icon identifier" },
+        "color": { "type": "string", "maxLength": 50, "description": "Color code or Tailwind class" },
+        "image": { "type": "string", "maxLength": 500, "description": "Storage or CDN banner image URL" },
+        "order": { "type": "number", "description": "Display order" },
+        "published": { "type": "boolean", "description": "Whether the subject is live" },
+        "featured": { "type": "boolean", "description": "Featured on home page" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["name", "published"]
+    },
+    "Topic": {
+      "title": "Topic",
+      "description": "Topic or chapter syllabus unit within an educational subject",
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string", "maxLength": 128, "description": "Parent Subject ID" },
+        "title": { "type": "string", "maxLength": 200, "description": "Topic title" },
+        "description": { "type": "string", "maxLength": 1000, "description": "Topic summary or syllabus description" },
+        "order": { "type": "number", "description": "Display sequence order" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["subjectId", "title", "published"]
+    },
+    "Lecture": {
+      "title": "Lecture",
+      "description": "Video lecture or lesson resource within a topic",
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string", "maxLength": 128, "description": "Subject reference" },
+        "topicId": { "type": "string", "maxLength": 128, "description": "Topic reference" },
+        "title": { "type": "string", "maxLength": 250, "description": "Lecture title" },
+        "instructorName": { "type": "string", "maxLength": 150, "description": "Instructor or educator name" },
+        "description": { "type": "string", "maxLength": 1500, "description": "Lecture synopsis" },
+        "videoUrl": { "type": "string", "maxLength": 1000, "description": "YouTube or external video streaming URL" },
+        "storagePath": { "type": "string", "maxLength": 1000, "description": "Video file path or direct stream URL" },
+        "thumbnail": { "type": "string", "maxLength": 500, "description": "Thumbnail preview URL" },
+        "duration": { "type": "number", "description": "Video length in seconds" },
+        "order": { "type": "number", "description": "Display order" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["subjectId", "topicId", "title", "published"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "Text or PDF study note resource",
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string", "maxLength": 128, "description": "Subject reference" },
+        "topicId": { "type": "string", "maxLength": 128, "description": "Topic reference" },
+        "subject": { "type": "string", "maxLength": 150, "description": "Subject title cache" },
+        "chapter": { "type": "string", "maxLength": 200, "description": "Chapter or topic title cache" },
+        "title": { "type": "string", "maxLength": 250, "description": "Note title" },
+        "type": { "type": "string", "enum": ["text", "pdf"], "description": "Note format type" },
+        "content": { "type": "string", "maxLength": 50000, "description": "Rich text markdown or HTML note content" },
+        "pdfUrl": { "type": "string", "maxLength": 1000, "description": "Direct PDF download or preview URL" },
+        "fileUrl": { "type": "string", "maxLength": 1000, "description": "Alternative file download URL" },
+        "thumbnail": { "type": "string", "maxLength": 500, "description": "Thumbnail preview image" },
+        "storagePath": { "type": "string", "maxLength": 500, "description": "Firebase Storage path for PDF notes" },
+        "order": { "type": "number", "description": "Display order" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "status": { "type": "string", "description": "Publish status string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["title"]
+    },
+    "PYQ": {
+      "title": "PYQ",
+      "description": "Previous Year Question paper or question bank resource",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 250, "description": "PYQ paper title" },
+        "exam": { "type": "string", "maxLength": 100, "description": "Exam name (e.g. CBSE 10th, JEE, NEET, SSC)" },
+        "subject": { "type": "string", "maxLength": 120, "description": "Subject name" },
+        "subjectId": { "type": "string", "maxLength": 128, "description": "Subject reference ID" },
+        "chapter": { "type": "string", "maxLength": 150, "description": "Chapter name if chapter-wise" },
+        "year": { "type": "number", "description": "Year of examination (e.g. 2024)" },
+        "description": { "type": "string", "maxLength": 1000, "description": "Description or paper details" },
+        "pdfUrl": { "type": "string", "maxLength": 1000, "description": "Download or preview URL for paper PDF" },
+        "fileUrl": { "type": "string", "maxLength": 1000, "description": "Direct file URL" },
+        "solutionPdfUrl": { "type": "string", "maxLength": 1000, "description": "Solutions PDF download link" },
+        "thumbnail": { "type": "string", "maxLength": 500, "description": "Thumbnail image preview" },
+        "totalMarks": { "type": "number", "description": "Total marks for the paper" },
+        "duration": { "type": "number", "description": "Duration in minutes" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["title"]
+    },
+    "MCQ": {
+      "title": "MCQ",
+      "description": "Topic and chapter multiple choice questions created by Admin",
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string", "maxLength": 128, "description": "Subject reference" },
+        "topicId": { "type": "string", "maxLength": 128, "description": "Topic reference" },
+        "subject": { "type": "string", "maxLength": 120, "description": "Subject name cache" },
+        "chapter": { "type": "string", "maxLength": 200, "description": "Chapter name cache" },
+        "question": { "type": "string", "maxLength": 1000, "description": "Question statement in English" },
+        "hindiQuestion": { "type": "string", "maxLength": 1000, "description": "Question statement in Hindi translation" },
+        "optionA": { "type": "string", "maxLength": 500, "description": "Option A" },
+        "optionB": { "type": "string", "maxLength": 500, "description": "Option B" },
+        "optionC": { "type": "string", "maxLength": 500, "description": "Option C" },
+        "optionD": { "type": "string", "maxLength": 500, "description": "Option D" },
+        "options": { "type": "array", "description": "List of options" },
+        "correctAnswer": { "type": "string", "description": "Correct answer index or letter (0-3 or A/B/C/D)" },
+        "explanation": { "type": "string", "maxLength": 2000, "description": "Detailed explanation of correct answer" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"], "description": "Question difficulty level" },
+        "status": { "type": "string", "description": "Publish status (published/active/draft)" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["question"]
+    },
+    "MockTest": {
+      "title": "MockTest",
+      "description": "Full-length examination or timed practice test",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200, "description": "Mock test title" },
+        "subject": { "type": "string", "maxLength": 120, "description": "Subject stream" },
+        "subjectId": { "type": "string", "maxLength": 128, "description": "Subject reference ID" },
+        "description": { "type": "string", "maxLength": 1000, "description": "Mock test instructions and syllabus" },
+        "duration": { "type": "number", "description": "Test time limit in minutes" },
+        "totalMarks": { "type": "number", "description": "Total marks for test" },
+        "totalQuestions": { "type": "number", "description": "Total question count" },
+        "cutoffPercentage": { "type": "number", "description": "Qualifying cutoff score percentage" },
+        "negativeMarking": { "type": "number", "description": "Penalty per wrong answer (e.g. 0.25)" },
+        "tags": { "type": "array", "description": "Filter or category tags" },
+        "questions": { "type": "array", "description": "List of MCQ objects or question IDs" },
+        "questionIds": { "type": "array", "description": "List of MCQ references included in test" },
+        "published": { "type": "boolean", "description": "Publish status" },
+        "status": { "type": "string", "description": "Status string (published/draft)" },
+        "featured": { "type": "boolean", "description": "Featured on home page" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["title", "duration"]
+    },
+    "MockAttempt": {
+      "title": "MockAttempt",
+      "description": "Private student test submission and scoring results",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "description": "Student UID owner" },
+        "userName": { "type": "string", "maxLength": 150, "description": "Student name" },
+        "userEmail": { "type": "string", "maxLength": 150, "description": "Student email" },
+        "mockId": { "type": "string", "maxLength": 128, "description": "Mock test ID" },
+        "mockTitle": { "type": "string", "maxLength": 200, "description": "Mock test title cache" },
+        "score": { "type": "number", "description": "Marks attained" },
+        "total": { "type": "number", "description": "Total available questions" },
+        "correct": { "type": "number", "description": "Correct answers count" },
+        "wrong": { "type": "number", "description": "Wrong answers count" },
+        "skipped": { "type": "number", "description": "Unanswered questions count" },
+        "percentage": { "type": "number", "description": "Accuracy / Percentage score" },
+        "timeTaken": { "type": "number", "description": "Time taken in seconds" },
+        "answers": { "type": "object", "description": "Map of questionId to chosen option" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of completion" }
+      },
+      "required": ["uid", "mockId", "score", "total", "correct", "wrong"]
+    },
+    "MCQAttempt": {
+      "title": "MCQAttempt",
+      "description": "Topic practice quiz attempt record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "description": "Student UID owner" },
+        "topicId": { "type": "string", "maxLength": 128, "description": "Topic ID" },
+        "topicTitle": { "type": "string", "maxLength": 200, "description": "Topic title cache" },
+        "score": { "type": "number", "description": "Correct questions count" },
+        "total": { "type": "number", "description": "Total questions count" },
+        "correct": { "type": "number", "description": "Correct count" },
+        "wrong": { "type": "number", "description": "Wrong count" },
+        "answers": { "type": "object", "description": "Selected answers map" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of attempt" }
+      },
+      "required": ["uid", "topicId", "score", "total"]
+    },
+    "Progress": {
+      "title": "Progress",
+      "description": "Student learning tracking for lecture watch progress and topic completion",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "description": "Student UID owner" },
+        "topicId": { "type": "string", "maxLength": 128, "description": "Topic ID" },
+        "lectureId": { "type": "string", "maxLength": 128, "description": "Lecture ID if applicable" },
+        "progress": { "type": "number", "description": "Percent completion (0-100) or timestamp" },
+        "completed": { "type": "boolean", "description": "Whether completed" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last activity timestamp" }
+      },
+      "required": ["uid", "topicId"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application configuration and home controls",
+      "type": "object",
+      "properties": {
+        "appName": { "type": "string", "maxLength": 50, "description": "Application display name" },
+        "hindiName": { "type": "string", "maxLength": 50, "description": "Hindi display name" },
+        "welcomeHeading": { "type": "string", "maxLength": 100, "description": "Welcome heading title" },
+        "welcomeSubtext": { "type": "string", "maxLength": 250, "description": "Welcome subtitle description" },
+        "bannerImage": { "type": "string", "maxLength": 1000, "description": "Hero banner image URL" },
+        "bannerTitle": { "type": "string", "maxLength": 200, "description": "Hero banner title" },
+        "bannerSubtitle": { "type": "string", "maxLength": 300, "description": "Hero banner subtitle" },
+        "bannerButtonText": { "type": "string", "maxLength": 50, "description": "Hero button label" },
+        "bannerButtonVisible": { "type": "boolean", "description": "Hero button visibility" },
+        "logo": { "type": "string", "maxLength": 500, "description": "Brand logo URL" },
+        "supportEmail": { "type": "string", "maxLength": 120, "description": "Support contact email" },
+        "supportPhone": { "type": "string", "maxLength": 20, "description": "Support telephone" },
+        "themeColor": { "type": "string", "maxLength": 20, "description": "Brand theme color" },
+        "maintenanceMode": { "type": "boolean", "description": "Emergency maintenance mode switch" },
+        "maintenanceMessage": { "type": "string", "maxLength": 1000, "description": "Message displayed during maintenance" },
+        "showBanner": { "type": "boolean", "description": "Whether to display announcement banner" },
+        "bannerNotice": { "type": "string", "maxLength": 500, "description": "Banner message text" },
+        "announcement": { "type": "string", "maxLength": 1000, "description": "Current announcement text" },
+        "version": { "type": "string", "maxLength": 20, "description": "App version release" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profile documents strictly accessible by their owner"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Educational categories configured by Admin"
+    },
+    "/banners/{bannerId}": {
+      "schema": "Banner",
+      "description": "Hero and promotional banners published by Admin"
+    },
+    "/homeSections/{sectionId}": {
+      "schema": "HomeSection",
+      "description": "Home page layout and section toggles controlled by Admin"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "App announcements published by Admin"
+    },
+    "/subjects/{subjectId}": {
+      "schema": "Subject",
+      "description": "Curriculum subjects published by administrators"
+    },
+    "/topics/{topicId}": {
+      "schema": "Topic",
+      "description": "Topic syllabus items published under subjects"
+    },
+    "/lectures/{lectureId}": {
+      "schema": "Lecture",
+      "description": "Educational video lectures"
+    },
+    "/notes/{noteId}": {
+      "schema": "Note",
+      "description": "Text notes and PDF reference documents"
+    },
+    "/pyqs/{pyqId}": {
+      "schema": "PYQ",
+      "description": "Previous Year Question papers published by Admin"
+    },
+    "/mcqs/{mcqId}": {
+      "schema": "MCQ",
+      "description": "Multiple choice practice questions"
+    },
+    "/mockTests/{mockId}": {
+      "schema": "MockTest",
+      "description": "Exam preparation mock tests"
+    },
+    "/mockAttempts/{attemptId}": {
+      "schema": "MockAttempt",
+      "description": "Mock test results saved privately per user"
+    },
+    "/mcqAttempts/{attemptId}": {
+      "schema": "MCQAttempt",
+      "description": "Topic MCQ quiz results saved privately per user"
+    },
+    "/progress/{progressId}": {
+      "schema": "Progress",
+      "description": "Individual student lecture progress and completions"
+    },
+    "/appSettings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "Global application configuration documents"
+    }
+  }
+}

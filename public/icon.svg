@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#9333ea"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#4f46e5" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad)"/>
+  <!-- Stylized Book and Flame/Veda Motif -->
+  <g transform="translate(106, 116)" filter="url(#shadow)">
+    <!-- Book Pages -->
+    <path d="M150 200 C80 180, 20 190, 0 200 L0 50 C20 40, 80 30, 150 50 Z" fill="#ffffff" opacity="0.95"/>
+    <path d="M150 200 C220 180, 280 190, 300 200 L300 50 C280 40, 220 30, 150 50 Z" fill="#ffffff" opacity="0.95"/>
+    <path d="M147 40 L153 40 L153 220 L147 220 Z" fill="#e0e7ff"/>
+    <!-- Flame / Wisdom Symbol -->
+    <path d="M150 -10 C165 20, 185 45, 175 75 C168 95, 140 100, 135 80 C130 60, 145 35, 150 -10 Z" fill="#fbbf24"/>
+    <circle cx="150" cy="55" r="8" fill="#f59e0b"/>
+  </g>
+  <text x="256" y="440" font-family="system-ui, -apple-system, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="2">EDU VEDA</text>
+</svg>
