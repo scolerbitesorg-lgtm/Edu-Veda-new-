@@ -8,10 +8,18 @@ import {
   Copy,
   Check,
   Bookmark,
+  Volume2,
+  Play,
+  Pause,
+  Square,
+  Sparkles,
+  Loader2,
+  X,
 } from 'lucide-react';
-import { subscribeToNoteById, fetchNoteById } from '../services/notes';
+import { subscribeToNoteById } from '../services/notes';
 import { saveUserProgress, fetchUserProgress } from '../services/progress';
 import { isNoteSaved, toggleSaveNote } from '../services/bookmarks';
+import { generateNotesSummary } from '../services/ai';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { LoadingState } from '../components/LoadingState';
@@ -25,13 +33,29 @@ interface NoteViewerPageProps {
 
 export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }) => {
   const { user } = useAuth();
-  const { playTap, playSuccess } = useAudio();
+  const {
+    playTap,
+    playSuccess,
+    speakText,
+    pauseSpeech,
+    resumeSpeech,
+    stopSpeech,
+    isSpeaking,
+    isPaused,
+    speechRate,
+    setSpeechRate,
+  } = useAudio();
 
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xlarge'>('normal');
   const [copied, setCopied] = useState<boolean>(false);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
+
+  // AI Summary State
+  const [aiSummary, setAiSummary] = useState<string>('');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState<boolean>(false);
+  const [showSummaryModal, setShowSummaryModal] = useState<boolean>(false);
 
   useEffect(() => {
     setLoading(true);
@@ -40,8 +64,11 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
       setLoading(false);
     });
 
-    return () => unsub();
-  }, [noteId]);
+    return () => {
+      unsub();
+      stopSpeech(); // Stop TTS audio playback when navigating away
+    };
+  }, [noteId, stopSpeech]);
 
   // Check if previously completed & auto-record read progress after 3 seconds of active reading
   useEffect(() => {
@@ -80,6 +107,27 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleGenerateSummary = async () => {
+    if (!note) return;
+    playTap();
+    setShowSummaryModal(true);
+    if (aiSummary) return;
+
+    setIsGeneratingSummary(true);
+    try {
+      const summary = await generateNotesSummary({
+        topicTitle: note.title,
+        content: note.content || `${note.title} study notes and syllabus document.`,
+      });
+      setAiSummary(summary);
+      playSuccess();
+    } catch {
+      setAiSummary('AI Revision Summary: Focus on core definitions, formulas, and textbook key questions.');
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
   const isPdf =
     note?.type === 'pdf' ||
     Boolean(note?.pdfUrl) ||
@@ -94,6 +142,28 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
       ? 'text-base leading-relaxed'
       : 'text-lg leading-relaxed';
 
+  // Toggle or start TTS speech of notes
+  const handleToggleSpeech = () => {
+    playTap();
+    if (isSpeaking) {
+      if (isPaused) {
+        resumeSpeech();
+      } else {
+        pauseSpeech();
+      }
+    } else {
+      const textToRead = note?.content || `${note?.title}. PDF notes summary and key revision points.`;
+      speakText(`${note?.title}. ${textToRead}`);
+    }
+  };
+
+  const handleCycleSpeed = () => {
+    playTap();
+    const speeds = [1.0, 1.25, 1.5, 0.85];
+    const nextIdx = (speeds.indexOf(speechRate) + 1) % speeds.length;
+    setSpeechRate(speeds[nextIdx] || 1.0);
+  };
+
   return (
     <div className="space-y-4 pb-24 max-w-md mx-auto px-4 pt-2 animate-in fade-in duration-150">
       {/* Top Navigation Bar */}
@@ -103,9 +173,10 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
             type="button"
             onClick={() => {
               playTap();
+              stopSpeech();
               onBack();
             }}
-            className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors active:scale-95 shadow-xs"
+            className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors active:scale-95 shadow-xs cursor-pointer"
             aria-label="Back"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -118,20 +189,36 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
         {/* Font resize and Mark Read controls */}
         {note && (
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleGenerateSummary}
+              className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+              title="AI Quick Summary"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="hidden sm:inline">AI Summary</span>
+            </button>
+
             {!isPdf && (
               <div className="flex items-center bg-white border border-slate-200 rounded-xl p-0.5 shadow-2xs">
                 <button
                   type="button"
-                  onClick={() => setFontSize(fontSize === 'xlarge' ? 'large' : 'normal')}
-                  className="px-2 py-1 text-xs font-bold text-slate-600 hover:text-indigo-600 active:scale-95 transition-all"
+                  onClick={() => {
+                    playTap();
+                    setFontSize(fontSize === 'xlarge' ? 'large' : 'normal');
+                  }}
+                  className="px-2 py-1 text-xs font-bold text-slate-600 hover:text-indigo-600 active:scale-95 transition-all cursor-pointer"
                   title="Decrease Font Size"
                 >
                   A-
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFontSize(fontSize === 'normal' ? 'large' : 'xlarge')}
-                  className="px-2 py-1 text-xs font-bold text-slate-600 hover:text-indigo-600 active:scale-95 transition-all border-l border-slate-100"
+                  onClick={() => {
+                    playTap();
+                    setFontSize(fontSize === 'normal' ? 'large' : 'xlarge');
+                  }}
+                  className="px-2 py-1 text-xs font-bold text-slate-600 hover:text-indigo-600 active:scale-95 transition-all border-l border-slate-100 cursor-pointer"
                   title="Increase Font Size"
                 >
                   A+
@@ -146,7 +233,7 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
                   playTap();
                   toggleSaveNote(user.uid, note);
                 }}
-                className={`p-2 rounded-xl border transition-all active:scale-95 ${
+                className={`p-2 rounded-xl border transition-all active:scale-95 cursor-pointer ${
                   isNoteSaved(user.uid, note.id)
                     ? 'bg-amber-50 text-amber-600 border-amber-200'
                     : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800'
@@ -164,7 +251,7 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
             <button
               type="button"
               onClick={handleMarkAsRead}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer ${
                 isCompleted
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-600/20'
@@ -213,6 +300,78 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
             <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-snug">
               {note.title}
             </h1>
+          </div>
+
+          {/* Text-To-Speech (TTS) Audio Player Bar */}
+          <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-white rounded-2xl p-3.5 shadow-md flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${
+                  isSpeaking && !isPaused
+                    ? 'bg-emerald-500 text-white animate-pulse'
+                    : 'bg-white/10 text-white'
+                }`}
+              >
+                <Volume2 className="w-4 h-4" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold truncate">AI Audio Reader</span>
+                  {isSpeaking && !isPaused && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  )}
+                </div>
+                <p className="text-[10px] text-indigo-200 truncate">
+                  {isSpeaking
+                    ? isPaused
+                      ? 'Audio Paused'
+                      : 'Reading note aloud...'
+                    : 'Listen to speech summary'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Speed Button */}
+              <button
+                type="button"
+                onClick={handleCycleSpeed}
+                className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold transition-all active:scale-95 cursor-pointer"
+                title="Playback Speed"
+              >
+                {speechRate}x
+              </button>
+
+              {/* Play / Pause Button */}
+              <button
+                type="button"
+                onClick={handleToggleSpeech}
+                className="w-8 h-8 rounded-xl bg-white text-indigo-900 flex items-center justify-center hover:bg-indigo-50 transition-all active:scale-95 shadow-xs font-bold cursor-pointer"
+                title={isSpeaking && !isPaused ? 'Pause Speech' : 'Play Speech'}
+              >
+                {isSpeaking && !isPaused ? (
+                  <Pause className="w-4 h-4 fill-current" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                )}
+              </button>
+
+              {/* Stop Button */}
+              {isSpeaking && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTap();
+                    stopSpeech();
+                  }}
+                  className="w-8 h-8 rounded-xl bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+                  title="Stop Speech"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Dedicated Content Body */}
@@ -281,7 +440,7 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
                 <button
                   type="button"
                   onClick={handleCopyText}
-                  className="flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition-colors"
+                  className="flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition-colors cursor-pointer"
                 >
                   {copied ? (
                     <>
@@ -305,6 +464,63 @@ export const NoteViewerPage: React.FC<NoteViewerPageProps> = ({ noteId, onBack }
             </div>
           )}
         </>
+      )}
+
+      {/* AI Quick Revision Summary Modal */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[80vh] flex flex-col shadow-2xl border border-slate-200 animate-in slide-in-from-bottom-6 duration-200">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">AI Revision Summary</h3>
+                  <p className="text-[10px] text-slate-500 truncate max-w-[200px]">{note?.title}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  playTap();
+                  setShowSummaryModal(false);
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto space-y-3 flex-1">
+              {isGeneratingSummary ? (
+                <div className="py-8 flex flex-col items-center justify-center gap-2">
+                  <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+                  <span className="text-xs font-medium text-slate-500">
+                    Generating high-yield summary...
+                  </span>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed space-y-2">
+                  {aiSummary}
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 border-t border-slate-100 bg-slate-50/80 rounded-b-3xl flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  playTap();
+                  setShowSummaryModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs active:scale-95 transition-all cursor-pointer"
+              >
+                Close Summary
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

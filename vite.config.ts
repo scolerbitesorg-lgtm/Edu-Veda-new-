@@ -2,8 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
-import { GoogleGenAI } from '@google/genai';
-import { generateVedaAiEducationalResponse } from './src/data/educationalKnowledge.ts';
+import { processVedaAiServerRequest } from './src/server/aiBackend.ts';
 
 function vedaAiApiPlugin(): Plugin {
   return {
@@ -12,7 +11,13 @@ function vedaAiApiPlugin(): Plugin {
       server.middlewares.use('/api/veda-ai', async (req, res) => {
         if (req.method !== 'POST') {
           res.statusCode = 405;
-          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          res.end(
+            JSON.stringify({
+              success: false,
+              code: 'METHOD_NOT_ALLOWED',
+              message: 'Method not allowed',
+            })
+          );
           return;
         }
 
@@ -23,72 +28,53 @@ function vedaAiApiPlugin(): Plugin {
 
         req.on('end', async () => {
           res.setHeader('Content-Type', 'application/json');
-          const apiKey = process.env.GEMINI_API_KEY;
 
           try {
             const data = JSON.parse(body || '{}');
-            const userMessage = data.message || '';
-            const history = data.history || [];
+            const feature = data.feature || 'ai-tutor';
+            const prompt = (data.prompt || data.message || '').trim();
+            const systemPrompt = data.systemPrompt;
+            const history = Array.isArray(data.history) ? data.history : [];
+            const options = data.options || {};
+            const aiMultiProviders = data.aiMultiProviders ? { ...data, ...data.aiMultiProviders } : data;
 
-            if (!userMessage.trim()) {
+            if (!prompt) {
               res.statusCode = 400;
-              res.end(JSON.stringify({ error: 'Message cannot be empty' }));
+              res.end(
+                JSON.stringify({
+                  success: false,
+                  code: 'INVALID_INPUT',
+                  message: 'Prompt cannot be empty',
+                })
+              );
               return;
             }
 
-            if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-              try {
-                const ai = new GoogleGenAI({
-                  apiKey,
-                  httpOptions: {
-                    headers: {
-                      'User-Agent': 'aistudio-build',
-                    },
-                  },
-                });
+            const result = await processVedaAiServerRequest({
+              feature,
+              prompt,
+              message: prompt,
+              systemPrompt,
+              history,
+              options,
+              aiMultiProviders,
+              defaultGeminiApiKey: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY,
+              defaultGroqApiKey: process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY,
+              defaultOpenRouterApiKey: process.env.OPENROUTER_API_KEY || process.env.VITE_OPENROUTER_API_KEY,
+            });
 
-                const formattedContents = [
-                  ...history.slice(-6).map((msg: { role: string; text: string }) => ({
-                    role: msg.role === 'user' ? 'user' : 'model',
-                    parts: [{ text: msg.text }],
-                  })),
-                  {
-                    role: 'user',
-                    parts: [{ text: userMessage }],
-                  },
-                ];
-
-                const response = await ai.models.generateContent({
-                  model: 'gemini-3.8-flash',
-                  contents: formattedContents,
-                  config: {
-                    systemInstruction:
-                      'You are Veda AI, the intelligent and encouraging educational mentor for Edu Veda. You assist students in competitive examinations (such as UPSC, State PSC, SSC, Railways, CBSE) and core subjects including Indian History, Geography, Indian Polity, General Science, and Mathematics. Support explanations in both English and Hindi. Ensure answers are well-structured with key points, summaries, and exam-focused takeaways.',
-                  },
-                });
-
-                const replyText = response.text || '';
-                if (replyText.trim()) {
-                  res.statusCode = 200;
-                  res.end(JSON.stringify({ configured: true, reply: replyText }));
-                  return;
-                }
-              } catch {
-                // If remote Gemini API is unavailable or denied access, smoothly fall through to built-in educational engine
-              }
-            }
-
-            // High-yield educational pedagogical response
-            const educationalReply = generateVedaAiEducationalResponse(userMessage);
             res.statusCode = 200;
-            res.end(JSON.stringify({ configured: true, reply: educationalReply }));
-          } catch {
-            const fallbackReply = generateVedaAiEducationalResponse('Edu Veda Study Guide');
+            res.end(JSON.stringify(result));
+          } catch (err: any) {
+            console.error('[Vite Server /api/veda-ai error]:', err?.message || err);
             res.statusCode = 200;
-            res.end(JSON.stringify({
-              configured: true,
-              reply: fallbackReply,
-            }));
+            res.end(
+              JSON.stringify({
+                success: false,
+                code: 'SERVICE_UNAVAILABLE',
+                message: 'AI service is temporarily unavailable. Please try again later.',
+              })
+            );
           }
         });
       });
@@ -98,7 +84,7 @@ function vedaAiApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    base: './',
+    base: '/',
     plugins: [react(), tailwindcss(), vedaAiApiPlugin()],
     resolve: {
       alias: {

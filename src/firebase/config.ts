@@ -1,27 +1,73 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, doc, getDocFromServer, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import firebaseConfigJson from '../../firebase-applet-config.json';
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJson.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJson.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigJson.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJson.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfigJson.measurementId,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseConfigJson.firestoreDatabaseId,
+// Default project configuration fallback
+const defaultConfig = {
+  projectId: 'acoustic-energy-65p7n',
+  appId: '1:577865334119:web:3d8772a6c51ffd441303c2',
+  apiKey: 'edu-veda-public-client-key',
+  authDomain: 'acoustic-energy-65p7n.firebaseapp.com',
+  firestoreDatabaseId: 'ai-studio-remixeduveda-8ae4aac6-f0b5-4ed8-9dda-cd902e1b5c20',
+  storageBucket: 'acoustic-energy-65p7n.firebasestorage.app',
+  messagingSenderId: '577865334119',
 };
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const apiKeyEnv = (import.meta.env.VITE_FIREBASE_API_KEY || '').trim();
+
+const firebaseConfig = {
+  apiKey: apiKeyEnv || defaultConfig.apiKey,
+  authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || defaultConfig.authDomain).trim(),
+  projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID || defaultConfig.projectId).trim(),
+  storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || defaultConfig.storageBucket).trim(),
+  messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultConfig.messagingSenderId).trim(),
+  appId: (import.meta.env.VITE_FIREBASE_APP_ID || defaultConfig.appId).trim(),
+  measurementId: (import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || '').trim(),
+  firestoreDatabaseId: (import.meta.env.VITE_FIREBASE_DATABASE_ID || defaultConfig.firestoreDatabaseId || '(default)').trim(),
+};
+
+let appInstance: FirebaseApp;
+try {
+  appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+} catch (e) {
+  console.warn('Firebase initializeApp fallback:', e);
+  appInstance = !getApps().length ? initializeApp({ projectId: defaultConfig.projectId, apiKey: defaultConfig.apiKey, appId: defaultConfig.appId }) : getApp();
+}
+
+export const app = appInstance;
 
 const dbId = firebaseConfig.firestoreDatabaseId;
-export const db = dbId && dbId !== '(default)' ? getFirestore(app, dbId) : getFirestore(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
+let firestoreInstance: Firestore;
+try {
+  firestoreInstance = dbId && dbId !== '(default)' ? getFirestore(app, dbId) : getFirestore(app);
+} catch (e) {
+  console.warn('Firestore fallback to default db:', e);
+  firestoreInstance = getFirestore(app);
+}
+
+export const db = firestoreInstance;
+
+let authInstance: Auth;
+try {
+  authInstance = getAuth(app);
+} catch (e) {
+  console.warn('Auth initialization fallback:', e);
+  authInstance = getAuth(app);
+}
+
+export const auth = authInstance;
+
+let storageInstance: FirebaseStorage;
+try {
+  storageInstance = getStorage(app);
+} catch (e) {
+  console.warn('Storage initialization fallback:', e);
+  storageInstance = getStorage(app);
+}
+
+export const storage = storageInstance;
 
 // Safe Analytics Initialization
 if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
@@ -32,13 +78,13 @@ if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
       }
     })
     .catch(() => {
-      // Ignore analytics initialization failure in environments without cookies or storage
+      // Ignore analytics initialization failure
     });
 }
 
 let isConnected = true;
 
-// Validate connection to Firestore as required by Firebase skill
+// Validate connection to Firestore
 export async function testConnection(): Promise<boolean> {
   try {
     await Promise.race([
@@ -49,11 +95,10 @@ export async function testConnection(): Promise<boolean> {
     return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase Firestore is offline. Check internet connection or Firebase setup.');
+      console.warn('Firebase Firestore is offline. Operating in offline-cached mode.');
       isConnected = false;
       return false;
     }
-    // Expected if doc doesn't exist, but connection to server succeeded!
     isConnected = true;
     return true;
   }
@@ -63,7 +108,6 @@ export function getIsOnline(): boolean {
   return isConnected;
 }
 
-// Initial connection test
 testConnection().catch(() => {});
 
 export default app;

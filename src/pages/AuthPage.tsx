@@ -24,7 +24,7 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
-  const { login, signup, loginGoogle } = useAuth();
+  const { login, signup, loginGoogle, loginGuest } = useAuth();
   const { playTap, playSuccess } = useAudio();
 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -455,6 +455,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             </svg>
             <span>Continue with Google</span>
           </button>
+
+          {/* Quick Demo Mode Access Button */}
+          <div className="mt-3 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                playTap();
+                loginGuest();
+                onSuccess?.();
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200/80 font-bold text-xs text-slate-700 flex items-center justify-center gap-2 transition-all active:scale-[0.98] border border-slate-200/70"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Explore as Guest (Instant Access)</span>
+            </button>
+          </div>
         </div>
 
         {/* Footer info */}

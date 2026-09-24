@@ -67,7 +67,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSelectResult }) => {
           value={searchTerm}
           onFocus={() => setIsOpen(true)}
           onChange={e => setSearchTerm(e.target.value)}
-          placeholder="Search subjects, topics, lectures, notes..."
+          placeholder="Search subjects, lessons, lectures, notes..."
           className="w-full bg-white pl-10 pr-9 py-2.5 rounded-2xl border border-slate-200/80 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-all"
         />
 
@@ -141,12 +141,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSelectResult }) => {
                 </div>
               )}
 
-              {/* Topics Group */}
+              {/* Lessons Group */}
               {results.topics.length > 0 && (
                 <div>
                   <div className="flex items-center gap-1.5 px-2 mb-1.5 text-xs font-bold text-indigo-600">
                     <Layers className="w-3.5 h-3.5" />
-                    <span>Topics ({results.topics.length})</span>
+                    <span>Lessons ({results.topics.length})</span>
                   </div>
                   <div className="space-y-1">
                     {results.topics.map(item => (

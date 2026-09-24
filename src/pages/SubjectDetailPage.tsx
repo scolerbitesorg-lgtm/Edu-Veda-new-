@@ -57,18 +57,15 @@ export const SubjectDetailPage: React.FC<SubjectDetailPageProps> = ({
   }, [subjectId, user]);
 
   const getTopicProgress = (topicId: string): number => {
-    const topicRecords = progressList.filter(p => p.topicId === topicId);
-    if (topicRecords.length === 0) return 0;
-    const completedDirect = topicRecords.find(p => !p.lectureId && p.completed);
-    if (completedDirect) return 100;
-    const lectureRecords = topicRecords.filter(p => p.lectureId);
-    if (lectureRecords.length > 0) {
-      const avg =
-        lectureRecords.reduce((acc, curr) => acc + (curr.completed ? 100 : curr.progress || 0), 0) /
-        lectureRecords.length;
-      return Math.round(avg);
-    }
-    return topicRecords[0].progress || 0;
+    const direct = progressList.find(p => p.topicId === topicId && !p.lectureId);
+    if (direct?.progress !== undefined && direct.progress > 0) return direct.progress;
+    const hasVideo =
+      direct?.videoCompleted ||
+      progressList.some(
+        p => p.topicId === topicId && p.lectureId && (p.completed || p.progress >= 80)
+      );
+    const hasMCQ = Boolean(direct?.mcqCompleted || direct?.completed);
+    return Math.min(100, (hasVideo ? 60 : 0) + (hasMCQ ? 40 : 0));
   };
 
   return (

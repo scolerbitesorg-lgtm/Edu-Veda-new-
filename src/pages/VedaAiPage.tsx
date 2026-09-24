@@ -22,7 +22,7 @@ interface VedaAiPageProps {
 const getInitialWelcomeMessage = (): ChatMessage => ({
   id: `welcome_${Date.now()}`,
   role: 'assistant',
-  text: 'Hello! I am Veda AI — your 24x7 AI study mentor. You can ask me any topic explanation, key concepts, formulas, practice questions, or revision summaries. What would you like to study today?',
+  text: 'Namaste! I am **Veda AI**, your personal academic mentor and doubt-solver on Edu Veda.\n\nAsk me any concept, formula, constitutional article, historical event, or question for **UPSC, SSC, State PSC, NEET/JEE, Boards, or UGC NET**. How can I help your preparation today?',
   timestamp: new Date(),
 });
 

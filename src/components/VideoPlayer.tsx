@@ -12,10 +12,7 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
-  Smartphone,
-  PictureInPicture2,
-  ChevronDown,
-  RotateCw as RotateIcon,
+  ChevronLeft,
   X,
 } from 'lucide-react';
 
@@ -43,35 +40,22 @@ export function extractYouTubeId(url?: string): string | null {
   return match ? match[1] : null;
 }
 
-/**
- * Landscape & Fullscreen Helper with Orientation Lock
- */
-export const requestLandscapeFullscreen = async (element: HTMLElement | null) => {
+export const requestFullscreenElement = async (element: HTMLElement | null) => {
   if (!element) return;
   try {
     if (element.requestFullscreen) {
-      await element.requestFullscreen({ navigationUI: 'hide' });
+      await element.requestFullscreen();
     } else if ((element as any).webkitRequestFullscreen) {
       await (element as any).webkitRequestFullscreen();
     } else if ((element as any).msRequestFullscreen) {
       await (element as any).msRequestFullscreen();
     }
   } catch (e) {
-    console.warn('Fullscreen fallback:', e);
-  }
-
-  if (screen.orientation && typeof screen.orientation.lock === 'function') {
-    try {
-      await screen.orientation.lock('landscape');
-    } catch {}
-  } else if ((screen as any).lockOrientation) {
-    try {
-      (screen as any).lockOrientation('landscape');
-    } catch {}
+    console.warn('Fullscreen request failed:', e);
   }
 };
 
-export const exitLandscapeFullscreen = async () => {
+export const exitFullscreenElement = async () => {
   try {
     if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
       if (document.exitFullscreen) {
@@ -82,22 +66,6 @@ export const exitLandscapeFullscreen = async () => {
     }
   } catch (e) {
     console.warn('Exit fullscreen error:', e);
-  }
-
-  if (screen.orientation && typeof screen.orientation.unlock === 'function') {
-    try {
-      screen.orientation.unlock();
-    } catch {}
-  }
-  if (screen.orientation && typeof screen.orientation.lock === 'function') {
-    try {
-      await screen.orientation.lock('portrait');
-      setTimeout(() => {
-        try {
-          screen.orientation.unlock();
-        } catch {}
-      }, 400);
-    } catch {}
   }
 };
 
@@ -137,7 +105,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 };
 
 /**
- * High-performance YouTube Video Embed Player with Forced Game-Mode Landscape Fullscreen & Swipe-Down Exit
+ * YouTube Video Embed Player with clean fullscreen and top Back button
  */
 interface YouTubeVideoEmbedProps {
   ytId: string;
@@ -159,51 +127,33 @@ const YouTubeVideoEmbed: React.FC<YouTubeVideoEmbedProps> = ({
   const [markedDone, setMarkedDone] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(viewMode === 'fullscreen');
-  const [dragY, setDragY] = useState<number>(0);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
-    return typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : false;
-  });
-  const [forceGameModeLandscape, setForceGameModeLandscape] = useState<boolean>(true);
 
-  const touchStartY = useRef<number>(0);
-  const touchStartX = useRef<number>(0);
-
-  // Monitor device portrait/landscape orientation in real-time
+  // Automatic watch progress tracker for YouTube
   useEffect(() => {
-    const handleResize = () => {
-      setIsPortrait(window.innerHeight > window.innerWidth);
-    };
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleResize);
-    };
-  }, []);
+    // Initial 20% registration
+    onProgressUpdate?.(20, 10);
 
-  useEffect(() => {
-    onProgressUpdate?.(15, 10);
+    // Auto-mark completed (100%) after active 20 seconds of lecture presence
     const timer = setTimeout(() => {
-      onProgressUpdate?.(90, 60);
-    }, 25000);
+      setMarkedDone(true);
+      onProgressUpdate?.(100, 60);
+      onEnded?.();
+    }, 20000);
+
     return () => clearTimeout(timer);
   }, [ytId]);
 
   const handleExitFullscreen = useCallback(async () => {
-    await exitLandscapeFullscreen();
+    await exitFullscreenElement();
     setIsFullscreen(false);
-    setDragY(0);
-    setIsDragging(false);
     onChangeViewMode?.('standard');
   }, [onChangeViewMode]);
 
   const handleEnterFullscreen = useCallback(async () => {
     if (containerRef.current) {
-      await requestLandscapeFullscreen(containerRef.current);
+      await requestFullscreenElement(containerRef.current);
     }
     setIsFullscreen(true);
-    setDragY(0);
     onChangeViewMode?.('fullscreen');
   }, [onChangeViewMode]);
 
@@ -226,144 +176,41 @@ const YouTubeVideoEmbed: React.FC<YouTubeVideoEmbedProps> = ({
     };
   }, [isFullscreen, onChangeViewMode]);
 
-  // Swipe Down to Dismiss Handlers (supports both physical and 90deg rotated gestures)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!isFullscreen) return;
-    touchStartY.current = e.touches[0].clientY;
-    touchStartX.current = e.touches[0].clientX;
-    setIsDragging(false);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isFullscreen) return;
-    const currentY = e.touches[0].clientY;
-    const currentX = e.touches[0].clientX;
-    const deltaY = currentY - touchStartY.current;
-    const deltaX = currentX - touchStartX.current;
-
-    const shouldRotate = isFullscreen && isPortrait && forceGameModeLandscape;
-
-    if (shouldRotate) {
-      // In 90deg rotated frame, horizontal swipe or vertical swipe dismisses
-      const effectiveDelta = Math.max(deltaX, deltaY);
-      if (effectiveDelta > 15) {
-        setIsDragging(true);
-        setDragY(Math.max(0, effectiveDelta));
-      }
-    } else {
-      // Standard vertical swipe down
-      if (deltaY > 15 && deltaY > Math.abs(deltaX)) {
-        setIsDragging(true);
-        setDragY(Math.max(0, deltaY));
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (!isFullscreen || !isDragging) return;
-    if (dragY > 70) {
-      handleExitFullscreen();
-    } else {
-      setDragY(0);
-      setIsDragging(false);
-    }
-  };
-
   const handleMarkComplete = () => {
     setMarkedDone(true);
     onProgressUpdate?.(100, 100);
     onEnded?.();
   };
 
-  const shouldRotate = isFullscreen && isPortrait && forceGameModeLandscape;
-
-  // Calculate dynamic transform & layout styles
-  let containerStyle: React.CSSProperties = {};
-  if (isFullscreen) {
-    if (shouldRotate) {
-      // Game Mode Landscape Rotation (forces full horizontal landscape on portrait screen)
-      containerStyle = {
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        width: '100vh',
-        height: '100vw',
-        transform: `translate(-50%, -50%) rotate(90deg) translateY(${dragY}px) scale(${
-          1 - Math.min(0.2, dragY / 800)
-        })`,
-        transformOrigin: 'center center',
-        zIndex: 999999,
-        opacity: Math.max(0.4, 1 - dragY / 400),
-        transition: isDragging
-          ? 'none'
-          : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
-        touchAction: 'none',
-      };
-    } else {
-      // Standard Fullscreen (Physical landscape or desktop)
-      containerStyle = {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        transform: `translateY(${dragY}px) scale(${1 - Math.min(0.2, dragY / 800)})`,
-        zIndex: 999999,
-        opacity: Math.max(0.4, 1 - dragY / 400),
-        transition: isDragging
-          ? 'none'
-          : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
-      };
-    }
-  }
-
   const containerClasses = isFullscreen
-    ? 'bg-black flex flex-col justify-between overflow-hidden select-none'
+    ? 'fixed inset-0 z-[999999] bg-black flex flex-col justify-between overflow-hidden select-none w-screen h-screen'
     : viewMode === 'half'
     ? 'relative w-full h-full aspect-video sm:h-[48vh] bg-slate-950 rounded-2xl overflow-hidden shadow-xl border border-slate-800'
     : 'relative w-full aspect-video bg-slate-950 rounded-2xl overflow-hidden shadow-xl border border-slate-800 flex flex-col justify-between group';
 
   return (
-    <div
-      ref={containerRef}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      className={containerClasses}
-      style={containerStyle}
-    >
+    <div ref={containerRef} className={containerClasses}>
       {/* Top Header Controls Bar in Fullscreen Mode */}
       {isFullscreen && (
-        <div className="absolute top-2 left-0 right-0 z-30 flex items-center justify-between px-4 pointer-events-auto">
-          {/* Swipe Down to Exit button / indicator */}
+        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto">
+          {/* Back Button to Exit Fullscreen */}
           <button
             type="button"
             onClick={handleExitFullscreen}
-            className="px-3 py-1.5 rounded-full bg-black/80 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg"
+            className="px-3.5 py-2 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg cursor-pointer"
           >
-            <ChevronDown className="w-4 h-4" />
-            <span>Swipe Down to Exit</span>
+            <ChevronLeft className="w-4 h-4" />
+            <span>Back</span>
           </button>
 
           <div className="flex items-center gap-2">
-            {/* Rotation toggle button (Switch between 90deg Landscape Game Mode and Standard) */}
-            {isPortrait && (
-              <button
-                type="button"
-                onClick={() => setForceGameModeLandscape(prev => !prev)}
-                className="px-2.5 py-1.5 rounded-full bg-black/80 hover:bg-black text-indigo-300 text-xs font-bold flex items-center gap-1 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg"
-                title="Toggle Landscape Rotation"
-              >
-                <RotateIcon className="w-3.5 h-3.5" />
-                <span>{forceGameModeLandscape ? '90° Landscape' : 'Portrait'}</span>
-              </button>
-            )}
-
-            {/* Exit Close Button */}
+            <span className="text-xs font-semibold text-white/90 bg-black/70 px-3 py-1.5 rounded-xl border border-white/10 truncate max-w-[200px]">
+              {title}
+            </span>
             <button
               type="button"
               onClick={handleExitFullscreen}
-              className="w-8 h-8 rounded-full bg-black/80 hover:bg-black text-white flex items-center justify-center backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg"
+              className="w-8 h-8 rounded-xl bg-black/80 hover:bg-black text-white flex items-center justify-center backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg cursor-pointer"
               aria-label="Exit Fullscreen"
             >
               <X className="w-4 h-4" />
@@ -381,23 +228,22 @@ const YouTubeVideoEmbed: React.FC<YouTubeVideoEmbedProps> = ({
         className="w-full h-full object-cover border-0"
       />
 
-      {/* Floating Action Controls Bar on Overlay (when not in fullscreen) */}
+      {/* Top Controls Overlay (when not in fullscreen) */}
       {!isFullscreen && (
         <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 pointer-events-auto">
           <button
             type="button"
             onClick={handleEnterFullscreen}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 bg-slate-900/90 hover:bg-slate-900 text-indigo-300 border border-indigo-500/30 shadow-lg backdrop-blur-md active:scale-95 transition-all"
-            title="Play in Landscape Game Mode"
+            className="p-2 rounded-xl text-xs font-bold bg-slate-900/90 hover:bg-slate-900 text-white border border-slate-700/60 shadow-lg backdrop-blur-md active:scale-95 transition-all cursor-pointer"
+            title="Fullscreen"
           >
-            <Smartphone className="w-3.5 h-3.5 rotate-90" />
-            <span>Full Landscape</span>
+            <Maximize className="w-3.5 h-3.5" />
           </button>
 
           <button
             type="button"
             onClick={handleMarkComplete}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md transition-all active:scale-95 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer ${
               markedDone
                 ? 'bg-emerald-600 text-white shadow-emerald-600/30'
                 : 'bg-slate-900/90 hover:bg-slate-900 text-emerald-400 border border-emerald-500/30 shadow-black/40'
@@ -413,7 +259,7 @@ const YouTubeVideoEmbed: React.FC<YouTubeVideoEmbedProps> = ({
 };
 
 /**
- * HTML5 MP4 / Direct Stream Video Player with Forced Game-Mode Landscape Fullscreen & Swipe-Down Exit
+ * HTML5 MP4 / Direct Stream Video Player with clean controls and top Back button
  */
 interface HTML5VideoPlayerProps {
   src: string;
@@ -446,46 +292,20 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
   const [showControls, setShowControls] = useState<boolean>(true);
-  const [lastTap, setLastTap] = useState<number>(0);
-
-  // Orientation & Game Mode Landscape Rotation
-  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
-    return typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : false;
-  });
-  const [forceGameModeLandscape, setForceGameModeLandscape] = useState<boolean>(true);
-
-  // Swipe-down to exit gesture state
-  const [dragY, setDragY] = useState<number>(0);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const touchStartY = useRef<number>(0);
-  const touchStartX = useRef<number>(0);
-
-  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const speedOptions = [0.75, 1, 1.25, 1.5, 2];
-
-  // Monitor device orientation in real-time
-  useEffect(() => {
-    const handleResize = () => {
-      setIsPortrait(window.innerHeight > window.innerWidth);
-    };
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleResize);
-    };
-  }, []);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const formatTime = (timeInSeconds: number) => {
     if (isNaN(timeInSeconds)) return '00:00';
-    const minutes = Math.floor(timeInSeconds / 60);
-    const seconds = Math.floor(timeInSeconds % 60);
-    return `${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    const mins = Math.floor(timeInSeconds / 60);
+    const secs = Math.floor(timeInSeconds % 60);
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
     if (isPlaying) {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
@@ -542,95 +362,26 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
     setShowSpeedMenu(false);
   };
 
-  // Picture in Picture
-  const handleTogglePiP = async () => {
-    if (!videoRef.current) return;
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else if (videoRef.current.requestPictureInPicture) {
-        await videoRef.current.requestPictureInPicture();
-      }
-    } catch (e) {
-      console.warn('PiP error:', e);
-    }
-  };
-
-  // Landscape Fullscreen Trigger
+  // Fullscreen Handlers
   const handleEnterFullscreen = useCallback(async () => {
     if (containerRef.current) {
-      await requestLandscapeFullscreen(containerRef.current);
+      await requestFullscreenElement(containerRef.current);
     }
     setIsFullscreen(true);
-    setDragY(0);
     onChangeViewMode?.('fullscreen');
   }, [onChangeViewMode]);
 
-  // Exit Fullscreen & Restore Portrait
   const handleExitFullscreen = useCallback(async () => {
-    await exitLandscapeFullscreen();
+    await exitFullscreenElement();
     setIsFullscreen(false);
-    setDragY(0);
-    setIsDragging(false);
     onChangeViewMode?.('standard');
   }, [onChangeViewMode]);
 
-  const handleToggleLandscape = () => {
+  const handleToggleFullscreen = () => {
     if (!isFullscreen) {
       handleEnterFullscreen();
     } else {
       handleExitFullscreen();
-    }
-  };
-
-  // Touch handlers for Double Tap to skip + Swipe Down to dismiss
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    resetControlsTimer();
-    touchStartY.current = e.touches[0].clientY;
-    touchStartX.current = e.touches[0].clientX;
-    setIsDragging(false);
-
-    // Double tap skip detection
-    const now = Date.now();
-    if (now - lastTap < 300) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const touchX = e.touches[0]?.clientX || 0;
-      const isRightSide = touchX - rect.left > rect.width / 2;
-      handleSkip(isRightSide ? 10 : -10);
-    }
-    setLastTap(now);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isFullscreen) return;
-    const currentY = e.touches[0].clientY;
-    const currentX = e.touches[0].clientX;
-    const deltaY = currentY - touchStartY.current;
-    const deltaX = currentX - touchStartX.current;
-
-    const shouldRotate = isFullscreen && isPortrait && forceGameModeLandscape;
-
-    if (shouldRotate) {
-      const effectiveDelta = Math.max(deltaX, deltaY);
-      if (effectiveDelta > 15) {
-        setIsDragging(true);
-        setDragY(Math.max(0, effectiveDelta));
-      }
-    } else {
-      if (deltaY > 15 && deltaY > Math.abs(deltaX)) {
-        setIsDragging(true);
-        setDragY(Math.max(0, deltaY));
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (!isFullscreen || !isDragging) return;
-    if (dragY > 70) {
-      handleExitFullscreen();
-    } else {
-      setDragY(0);
-      setIsDragging(false);
     }
   };
 
@@ -654,47 +405,8 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
     };
   }, [isFullscreen, onChangeViewMode]);
 
-  const shouldRotate = isFullscreen && isPortrait && forceGameModeLandscape;
-
-  let containerStyle: React.CSSProperties = {};
-  if (isFullscreen) {
-    if (shouldRotate) {
-      containerStyle = {
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        width: '100vh',
-        height: '100vw',
-        transform: `translate(-50%, -50%) rotate(90deg) translateY(${dragY}px) scale(${
-          1 - Math.min(0.2, dragY / 800)
-        })`,
-        transformOrigin: 'center center',
-        zIndex: 999999,
-        opacity: Math.max(0.4, 1 - dragY / 400),
-        transition: isDragging
-          ? 'none'
-          : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
-        touchAction: 'none',
-      };
-    } else {
-      containerStyle = {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        transform: `translateY(${dragY}px) scale(${1 - Math.min(0.2, dragY / 800)})`,
-        zIndex: 999999,
-        opacity: Math.max(0.4, 1 - dragY / 400),
-        transition: isDragging
-          ? 'none'
-          : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
-      };
-    }
-  }
-
   const containerClasses = isFullscreen
-    ? 'bg-black flex flex-col justify-between overflow-hidden select-none'
+    ? 'fixed inset-0 z-[999999] bg-black flex flex-col justify-between overflow-hidden select-none w-screen h-screen'
     : viewMode === 'half'
     ? 'relative w-full h-[45vh] max-h-[480px] bg-black rounded-2xl overflow-hidden shadow-2xl select-none group'
     : 'relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-lg select-none group';
@@ -703,50 +415,29 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
     <div
       ref={containerRef}
       onMouseMove={resetControlsTimer}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      onClick={resetControlsTimer}
       className={containerClasses}
-      style={containerStyle}
     >
-      {/* Top Pull-to-Dismiss Handle Banner in Fullscreen */}
+      {/* Top Header in Fullscreen */}
       {isFullscreen && (
         <div
-          className={`absolute top-2 left-0 right-0 z-30 flex items-center justify-between px-4 transition-opacity duration-300 pointer-events-auto ${
-            showControls || dragY > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          className={`absolute top-3 left-3 right-3 z-30 flex items-center justify-between transition-opacity duration-300 pointer-events-auto ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
+          {/* Back Button to Exit Fullscreen */}
           <button
             type="button"
             onClick={handleExitFullscreen}
-            className="px-3 py-1.5 rounded-full bg-black/80 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg"
+            className="px-3.5 py-2 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg cursor-pointer"
           >
-            <ChevronDown className="w-4 h-4" />
-            <span>Swipe Down to Exit</span>
+            <ChevronLeft className="w-4 h-4" />
+            <span>Back</span>
           </button>
 
-          <div className="flex items-center gap-2">
-            {isPortrait && (
-              <button
-                type="button"
-                onClick={() => setForceGameModeLandscape(prev => !prev)}
-                className="px-2.5 py-1.5 rounded-full bg-black/80 hover:bg-black text-indigo-300 text-xs font-bold flex items-center gap-1 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg"
-                title="Toggle Landscape Rotation"
-              >
-                <RotateIcon className="w-3.5 h-3.5" />
-                <span>{forceGameModeLandscape ? '90° Landscape' : 'Portrait'}</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={handleExitFullscreen}
-              className="w-8 h-8 rounded-full bg-black/80 hover:bg-black text-white flex items-center justify-center backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg"
-              aria-label="Exit Fullscreen"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <span className="text-xs font-semibold text-white/90 bg-black/70 px-3 py-1.5 rounded-xl border border-white/10 truncate max-w-[250px]">
+            {title}
+          </span>
         </div>
       )}
 
@@ -772,7 +463,12 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
             setCurrentTime(current);
             const total = videoRef.current.duration || 1;
             const percent = Math.min(100, Math.round((current / total) * 100));
-            onProgressUpdate?.(percent, current);
+            // Automatic done triggers when reaching >= 75% watch duration
+            if (percent >= 75) {
+              onProgressUpdate?.(100, current);
+            } else {
+              onProgressUpdate?.(percent, current);
+            }
           }
         }}
         onPlay={() => {
@@ -785,6 +481,7 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
         }}
         onEnded={() => {
           setIsPlaying(false);
+          onProgressUpdate?.(100, duration);
           onEnded?.();
         }}
         onError={() => {
@@ -814,187 +511,138 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Top Header Overlay with Title & Landscape Button (When not in fullscreen) */}
-      {!isFullscreen && (
-        <div
-          className={`absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent transition-opacity duration-300 flex items-center justify-between text-white z-10 ${
-            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          <span className="text-xs font-semibold truncate pr-4">{title}</span>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleToggleLandscape}
-              className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95"
-              title="Play in Landscape Game Mode"
-            >
-              <Smartphone className="w-3.5 h-3.5 rotate-90" />
-              <span>Full Landscape</span>
-            </button>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-600/80 font-medium">
-              HD
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Big Center Play/Pause Indicator */}
+      {/* Big Center Play/Pause Button */}
       {!isLoading && !hasError && !isPlaying && (
         <button
           type="button"
           onClick={handlePlayPause}
-          className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-indigo-600/90 hover:bg-indigo-600 text-white flex items-center justify-center shadow-xl shadow-indigo-600/30 transition-transform active:scale-95 z-10"
+          className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-indigo-600/90 hover:bg-indigo-600 text-white flex items-center justify-center shadow-xl shadow-indigo-600/30 transition-transform active:scale-95 z-10 cursor-pointer"
           aria-label="Play Video"
         >
           <Play className="w-7 h-7 fill-white ml-1" />
         </button>
       )}
 
-      {/* Custom Controls Bar */}
+      {/* Controls Bar */}
       <div
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-6 pb-2.5 px-3 transition-opacity duration-300 z-10 ${
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 pt-6 transition-opacity duration-300 text-white z-20 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        {/* Progress Slider */}
+        {/* Progress Scrubber */}
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-[11px] text-slate-300 font-mono">
+          <span className="text-[10px] font-mono font-medium text-slate-300">
             {formatTime(currentTime)}
           </span>
-          <input
-            type="range"
-            min={0}
-            max={duration || 100}
-            step={0.1}
-            value={currentTime}
-            onChange={handleSeek}
-            className="flex-1 h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:h-2 transition-all"
-            aria-label="Video seek bar"
-          />
-          <span className="text-[11px] text-slate-400 font-mono">
+          <div className="relative flex-1 flex items-center">
+            <input
+              type="range"
+              min="0"
+              max={duration || 100}
+              value={currentTime}
+              onChange={handleSeek}
+              className="w-full h-1.5 bg-white/30 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:h-2 transition-all"
+            />
+          </div>
+          <span className="text-[10px] font-mono font-medium text-slate-300">
             {formatTime(duration)}
           </span>
         </div>
 
         {/* Buttons Row */}
-        <div className="flex items-center justify-between text-white">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {/* Play/Pause */}
             <button
               type="button"
               onClick={handlePlayPause}
-              className="p-1.5 rounded-lg hover:bg-white/10 active:scale-90 transition-all"
-              aria-label={isPlaying ? 'Pause' : 'Play'}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+              title={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
             </button>
 
-            {/* Skip -10s */}
             <button
               type="button"
               onClick={() => handleSkip(-10)}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white active:scale-90 transition-all"
-              aria-label="Rewind 10 seconds"
+              className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+              title="Rewind 10s"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
 
-            {/* Skip +10s */}
             <button
               type="button"
               onClick={() => handleSkip(10)}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white active:scale-90 transition-all"
-              aria-label="Fast forward 10 seconds"
+              className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+              title="Forward 10s"
             >
               <RotateCw className="w-4 h-4" />
             </button>
 
-            {/* Volume Control */}
-            <div className="flex items-center gap-1 group/vol">
+            {/* Volume */}
+            <div className="flex items-center gap-1.5 ml-1">
               <button
                 type="button"
                 onClick={handleToggleMute}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white active:scale-90 transition-all"
-                aria-label={isMuted ? 'Unmute' : 'Mute'}
+                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4" />
+                  <VolumeX className="w-4 h-4 text-rose-400" />
                 ) : (
                   <Volume2 className="w-4 h-4" />
                 )}
               </button>
               <input
                 type="range"
-                min={0}
-                max={1}
-                step={0.05}
+                min="0"
+                max="1"
+                step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-14 h-1 bg-white/20 rounded appearance-none cursor-pointer accent-indigo-500 hidden sm:block"
-                aria-label="Volume slider"
+                className="w-12 h-1 bg-white/30 rounded appearance-none cursor-pointer accent-indigo-500 hidden sm:block"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Picture in Picture */}
-            {document.pictureInPictureEnabled && (
-              <button
-                type="button"
-                onClick={handleTogglePiP}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white active:scale-90 transition-all"
-                title="Picture-in-Picture"
-              >
-                <PictureInPicture2 className="w-4 h-4" />
-              </button>
-            )}
-
-            {/* Playback Speed */}
+          <div className="flex items-center gap-2">
+            {/* Speed Selector */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                className="px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 text-xs font-semibold tracking-tight transition-all flex items-center gap-1"
-                aria-label="Playback Speed"
+                className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[11px] font-bold transition-colors cursor-pointer"
               >
-                <Settings className="w-3 h-3" />
-                <span>{playbackRate}x</span>
+                {playbackRate}x
               </button>
 
               {showSpeedMenu && (
-                <div className="absolute bottom-9 right-0 bg-slate-900 border border-slate-700 rounded-xl py-1 w-24 shadow-2xl z-30">
-                  {speedOptions.map(speed => (
+                <div className="absolute bottom-8 right-0 bg-slate-900 border border-slate-700 rounded-xl p-1 shadow-2xl flex flex-col gap-0.5 z-40">
+                  {[0.75, 1, 1.25, 1.5, 2].map(speed => (
                     <button
                       key={speed}
                       type="button"
                       onClick={() => handleSetSpeed(speed)}
-                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
+                      className={`px-3 py-1 rounded text-xs text-left transition-colors cursor-pointer ${
                         playbackRate === speed
                           ? 'bg-indigo-600 text-white font-bold'
-                          : 'text-slate-300 hover:bg-slate-800'
+                          : 'text-slate-300 hover:bg-white/10'
                       }`}
                     >
-                      <span>{speed}x</span>
-                      {playbackRate === speed && <span>&bull;</span>}
+                      {speed}x
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Landscape Fullscreen */}
+            {/* Fullscreen Button */}
             <button
               type="button"
-              onClick={handleToggleLandscape}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-indigo-300 hover:text-white active:scale-90 transition-all"
-              title={isFullscreen ? 'Exit Fullscreen' : 'Landscape Fullscreen'}
+              onClick={handleToggleFullscreen}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             >
-              {isFullscreen ? (
-                <Minimize className="w-4 h-4" />
-              ) : (
-                <Maximize className="w-4 h-4" />
-              )}
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             </button>
           </div>
         </div>

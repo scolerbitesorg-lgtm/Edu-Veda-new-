@@ -40,7 +40,6 @@ export function subscribeToUserProgress(
           } catch {}
           callback(list);
         } else {
-          // If Firestore is empty, check local cache or return empty
           try {
             const cached: UserProgress[] = JSON.parse(
               localStorage.getItem(`edu_progress_${uid}`) || '[]'
@@ -68,6 +67,10 @@ export function subscribeToUserProgress(
   }
 }
 
+/**
+ * Saves lecture or topic progress.
+ * Formula: Each topic is 60% completed by watching the Video and 40% completed by solving the MCQs.
+ */
 export async function saveUserProgress(
   uid: string,
   topicId: string,
@@ -75,32 +78,155 @@ export async function saveUserProgress(
   progress: number = 100,
   completed: boolean = true
 ): Promise<void> {
-  const docId = `${uid}_${topicId}${lectureId ? '_' + lectureId : ''}`;
-  const data: UserProgress = {
-    id: docId,
-    uid,
-    topicId,
-    lectureId,
-    progress: Math.min(100, Math.max(0, Math.round(progress))),
-    completed,
-    updatedAt: new Date().toISOString(),
-  };
+  if (!uid || !topicId) return;
 
-  // Save to local cache immediately for 0ms response
+  const now = new Date().toISOString();
+  const clampedProgress = Math.min(100, Math.max(0, Math.round(progress)));
+  const isComplete = completed || clampedProgress >= 80;
+
+  // Retrieve cached progress list
+  let existingList: UserProgress[] = [];
   try {
-    const existing: UserProgress[] = JSON.parse(
-      localStorage.getItem(`edu_progress_${uid}`) || '[]'
-    );
-    const filtered = existing.filter(p => p.id !== docId);
-    filtered.unshift(data);
-    localStorage.setItem(`edu_progress_${uid}`, JSON.stringify(filtered));
+    existingList = JSON.parse(localStorage.getItem(`edu_progress_${uid}`) || '[]');
   } catch {}
 
-  // Sync to Firestore
+  // 1. If saving a specific lecture
+  if (lectureId) {
+    const lectureDocId = `${uid}_${topicId}_${lectureId}`;
+    const lectureData: UserProgress = {
+      id: lectureDocId,
+      uid,
+      topicId,
+      lectureId,
+      progress: clampedProgress,
+      completed: isComplete,
+      updatedAt: now,
+    };
+
+    // Update local cache for lecture
+    existingList = existingList.filter(p => p.id !== lectureDocId);
+    existingList.unshift(lectureData);
+
+    // Also automatically update parent Topic progress (60% Video + 40% MCQ)
+    if (isComplete) {
+      const topicDocId = `${uid}_${topicId}`;
+      const existingTopicProgress = existingList.find(
+        p => p.topicId === topicId && (!p.lectureId || p.id === topicDocId)
+      );
+
+      const mcqDone = Boolean(existingTopicProgress?.mcqCompleted);
+      const videoDone = true;
+
+      // 60% Video + 40% MCQ
+      const calculatedTopicPercent = (videoDone ? 60 : 0) + (mcqDone ? 40 : 0);
+      const topicCompleted = calculatedTopicPercent >= 100;
+
+      const topicData: UserProgress = {
+        id: topicDocId,
+        uid,
+        topicId,
+        progress: calculatedTopicPercent,
+        completed: topicCompleted,
+        videoCompleted: true,
+        mcqCompleted: mcqDone,
+        updatedAt: now,
+      };
+
+      existingList = existingList.filter(p => p.id !== topicDocId);
+      existingList.unshift(topicData);
+
+      // Save topic to Firestore
+      try {
+        await setDoc(doc(db, 'progress', topicDocId), topicData, { merge: true });
+      } catch (err) {
+        console.warn('Topic progress sync fallback:', err);
+      }
+    }
+
+    // Save lecture to local storage and Firestore
+    try {
+      localStorage.setItem(`edu_progress_${uid}`, JSON.stringify(existingList));
+      await setDoc(doc(db, 'progress', lectureDocId), lectureData, { merge: true });
+    } catch (err) {
+      console.warn('Lecture progress sync fallback:', err);
+    }
+  } else {
+    // 2. Direct topic progress save
+    const topicDocId = `${uid}_${topicId}`;
+    const existingTopic = existingList.find(p => p.id === topicDocId);
+
+    const topicData: UserProgress = {
+      id: topicDocId,
+      uid,
+      topicId,
+      progress: clampedProgress,
+      completed: isComplete,
+      videoCompleted: existingTopic?.videoCompleted || clampedProgress >= 60,
+      mcqCompleted: existingTopic?.mcqCompleted || isComplete,
+      updatedAt: now,
+    };
+
+    existingList = existingList.filter(p => p.id !== topicDocId);
+    existingList.unshift(topicData);
+
+    try {
+      localStorage.setItem(`edu_progress_${uid}`, JSON.stringify(existingList));
+      await setDoc(doc(db, 'progress', topicDocId), topicData, { merge: true });
+    } catch (err) {
+      console.warn('Direct topic progress sync fallback:', err);
+    }
+  }
+}
+
+/**
+ * Specifically marks MCQ completion for a topic.
+ * Gives 40% progress for MCQ. If Video was already watched (60%), topic reaches 100%.
+ */
+export async function saveTopicMCQCompletion(
+  uid: string,
+  topicId: string
+): Promise<void> {
+  if (!uid || !topicId) return;
+
+  const now = new Date().toISOString();
+  let existingList: UserProgress[] = [];
   try {
-    await setDoc(doc(db, 'progress', docId), data, { merge: true });
+    existingList = JSON.parse(localStorage.getItem(`edu_progress_${uid}`) || '[]');
+  } catch {}
+
+  const topicDocId = `${uid}_${topicId}`;
+  const existingTopic = existingList.find(p => p.id === topicDocId);
+
+  // Check if video was watched
+  const videoDone =
+    Boolean(existingTopic?.videoCompleted) ||
+    existingList.some(p => p.topicId === topicId && p.lectureId && (p.completed || p.progress >= 80));
+
+  const mcqDone = true;
+
+  // Formula: 60% Video + 40% MCQ
+  const calculatedTopicPercent = (videoDone ? 60 : 0) + (mcqDone ? 40 : 0);
+  const topicCompleted = calculatedTopicPercent >= 100;
+
+  const topicData: UserProgress = {
+    id: topicDocId,
+    uid,
+    topicId,
+    progress: calculatedTopicPercent,
+    completed: topicCompleted,
+    videoCompleted: videoDone,
+    mcqCompleted: true,
+    updatedAt: now,
+  };
+
+  existingList = existingList.filter(p => p.id !== topicDocId);
+  existingList.unshift(topicData);
+
+  try {
+    localStorage.setItem(`edu_progress_${uid}`, JSON.stringify(existingList));
+    await setDoc(doc(db, 'progress', topicDocId), topicData, { merge: true });
   } catch (err) {
-    console.warn('Firestore progress sync fallback to local storage:', err);
+    console.warn('MCQ topic progress sync fallback:', err);
   }
 }
 
@@ -140,6 +266,9 @@ export interface CalculatedStudyStats {
   totalLecturesCount: number;
 }
 
+/**
+ * Computes study statistics across all topics and lectures using the 60% Video + 40% MCQ rule.
+ */
 export function computeStudyStats(
   progressList: UserProgress[],
   totalTopics: Topic[],
@@ -148,38 +277,53 @@ export function computeStudyStats(
   const totalTopicsCount = Math.max(1, totalTopics.length);
   const totalLecturesCount = Math.max(1, totalLectures.length);
 
-  // Completed items
+  // Completed lecture IDs
   const completedLectureIds = new Set(
-    progressList.filter(p => p.lectureId && (p.completed || p.progress >= 80)).map(p => p.lectureId as string)
+    progressList
+      .filter(p => p.lectureId && (p.completed || p.progress >= 80))
+      .map(p => p.lectureId as string)
   );
 
-  const completedTopicIds = new Set(
-    progressList.filter(p => p.topicId && !p.lectureId && (p.completed || p.progress >= 100)).map(p => p.topicId)
-  );
+  let completedTopicsCount = 0;
+  let accumulatedProgress = 0;
 
-  // Also if all lectures of a topic are completed, count the topic as completed
   totalTopics.forEach(topic => {
-    const topicLectures = totalLectures.filter(l => l.topicId === topic.id);
-    if (topicLectures.length > 0) {
-      const allWatched = topicLectures.every(l => completedLectureIds.has(l.id));
-      if (allWatched) {
-        completedTopicIds.add(topic.id);
-      }
+    const topicProgressDoc = progressList.find(
+      p => p.topicId === topic.id && !p.lectureId
+    );
+
+    const hasWatchedLecture =
+      topicProgressDoc?.videoCompleted ||
+      totalLectures.some(
+        l => l.topicId === topic.id && completedLectureIds.has(l.id)
+      );
+
+    const hasDoneMCQ = topicProgressDoc?.mcqCompleted || topicProgressDoc?.completed;
+
+    let topicPercent = 0;
+    if (topicProgressDoc?.progress !== undefined && topicProgressDoc.progress > 0) {
+      topicPercent = topicProgressDoc.progress;
+    } else {
+      topicPercent = (hasWatchedLecture ? 60 : 0) + (hasDoneMCQ ? 40 : 0);
     }
+
+    if (topicPercent >= 100 || (hasWatchedLecture && hasDoneMCQ)) {
+      completedTopicsCount++;
+      topicPercent = 100;
+    }
+
+    accumulatedProgress += topicPercent;
   });
 
   const completedLecturesCount = completedLectureIds.size;
-  const completedTopicsCount = completedTopicIds.size;
-
-  // Weighted calculation: 60% topics/lessons progress, 40% videos watched
-  const topicRatio = completedTopicsCount / totalTopicsCount;
-  const lectureRatio = completedLecturesCount / totalLecturesCount;
-  const overallPercentage = Math.min(100, Math.round((topicRatio * 0.5 + lectureRatio * 0.5) * 100));
+  const overallPercentage = Math.min(
+    100,
+    Math.round(accumulatedProgress / totalTopicsCount)
+  );
 
   return {
     overallPercentage: Math.max(
       overallPercentage,
-      // If user has any completed progress at all, show at least meaningful percent
       completedLecturesCount > 0 || completedTopicsCount > 0
         ? Math.max(5, Math.round(((completedLecturesCount + completedTopicsCount) / (totalLecturesCount + totalTopicsCount)) * 100))
         : 0

@@ -17,12 +17,19 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
   const isSaved = user ? isNoteSaved(user.uid, note.id) : false;
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="w-full bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_3px_12px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all text-left flex items-center justify-between group"
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className="w-full bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_3px_12px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all text-left flex items-center justify-between group cursor-pointer select-none"
     >
-      <div className="flex items-center gap-3.5 min-w-0">
+      <div className="flex items-center gap-3.5 min-w-0 flex-1 pr-2">
         <div
           className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
             isPdf
@@ -37,13 +44,13 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
           )}
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-slate-800 text-sm tracking-tight truncate group-hover:text-indigo-600 transition-colors">
               {note.title}
             </h4>
             <span
-              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${
                 isPdf
                   ? 'bg-rose-100/70 text-rose-700'
                   : 'bg-indigo-100/70 text-indigo-700'
@@ -53,9 +60,9 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
             </span>
           </div>
 
-          <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            <span>High-Yield Revision &bull; Hindi/English</span>
+          <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+            <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+            <span className="truncate">High-Yield Revision &bull; Hindi/English</span>
           </p>
         </div>
       </div>
@@ -83,6 +90,6 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
           <ChevronRight className="w-4 h-4" />
         </div>
       </div>
-    </button>
+    </div>
   );
 };

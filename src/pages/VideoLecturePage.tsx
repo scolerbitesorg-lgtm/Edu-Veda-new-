@@ -347,7 +347,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
               <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
                   <ListVideo className="w-4 h-4 text-indigo-600" />
-                  <span>More in this Topic ({topicLectures.length})</span>
+                  <span>More in this Lesson ({topicLectures.length})</span>
                 </div>
 
                 <div className="space-y-2">

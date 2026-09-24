@@ -43,20 +43,56 @@ service cloud.firestore {
       allow write: if isAdmin() || isSignedIn();
     }
 
-    // Dynamic Banners
+    // Dynamic Banners & Promotions
     match /banners/{bannerId} {
       allow read: if true;
       allow write: if isAdmin() || isSignedIn();
     }
 
-    // Dynamic Home Sections
+    match /heroBanners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    match /promotions/{promoId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Dynamic Home Sections & Custom Sections
     match /homeSections/{sectionId} {
       allow read: if true;
       allow write: if isAdmin() || isSignedIn();
     }
 
-    // Announcements
+    match /customSections/{sectionId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    match /widgets/{widgetId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Quick Links & Feature Shortcuts
+    match /quickLinks/{linkId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    match /features/{featureId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    // Announcements & Notices
     match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
+    }
+
+    match /notices/{noticeId} {
       allow read: if true;
       allow write: if isAdmin() || isSignedIn();
     }

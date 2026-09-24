@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Layers } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { SearchBar } from '../components/SearchBar';
-import { DynamicSubject } from '../components/dynamic';
+import { DynamicSubject } from '../components/dynamic/DynamicSubject';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 
@@ -28,7 +28,9 @@ interface HomePageProps {
 
 export const HomePage: React.FC<HomePageProps> = ({
   onSelectSubject,
+  onSelectTopic,
   onSelectResult,
+  onNavigatePage,
 }) => {
   const { user, profile } = useAuth();
   const { playTap } = useAudio();
@@ -64,7 +66,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     return () => unsub();
   }, []);
 
-  // 4. Real-time MCQs listener to count exact MCQs per subject
+  // 4. Real-time MCQs listener
   useEffect(() => {
     const unsub = subscribeToAllPublishedMCQs(data => {
       setMcqs(data || []);
@@ -85,7 +87,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   return (
     <div className="space-y-4 pb-24 max-w-md mx-auto px-4 pt-3">
-      {/* Welcome Header */}
+      {/* 1. Welcome Greeting Header */}
       <div>
         <p className="text-xs font-bold text-indigo-600/90 uppercase tracking-wider">
           {welcomeHeading}
@@ -98,13 +100,38 @@ export const HomePage: React.FC<HomePageProps> = ({
         </p>
       </div>
 
-      {/* Search Bar */}
+      {/* 2. Search Bar */}
       <div>
         <SearchBar onSelectResult={onSelectResult} />
       </div>
 
-      {/* ONLY Subjects Section */}
-      <div className="pt-1">
+      {/* 3. Academic Subjects Section */}
+      <div className="pt-2">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-indigo-600" />
+              <span>Academic Subjects</span>
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Syllabus lessons, video lectures & practice MCQs
+            </p>
+          </div>
+
+          {subjects.length > 3 && (
+            <button
+              type="button"
+              onClick={() => {
+                playTap();
+                onNavigatePage?.('subjects');
+              }}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-700"
+            >
+              View All ({subjects.length})
+            </button>
+          )}
+        </div>
+
         {loading ? (
           <div className="py-12">
             <LoadingState variant="inline" message="Loading subjects..." />

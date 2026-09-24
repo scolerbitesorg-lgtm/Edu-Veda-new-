@@ -79,8 +79,8 @@ export const DynamicSubject: React.FC<DynamicSubjectProps> = ({
 
   const lessonBadge =
     actualLessons === 1
-      ? '1 Lesson / टॉपिक'
-      : `${actualLessons} Lessons / टॉपिक्स`;
+      ? '1 Lesson'
+      : `${actualLessons} Lessons`;
   const badgeColorClass = getLessonBadgeStyle(index);
 
   // Description
@@ -144,11 +144,11 @@ export const DynamicSubject: React.FC<DynamicSubjectProps> = ({
 
       {/* Divider with Metadata Info */}
       <div className="border-t border-slate-100 mt-3.5 pt-3 flex items-center justify-between text-xs sm:text-sm font-semibold">
-        {/* Left: Lessons / Topics Count */}
+        {/* Left: Lessons Count */}
         <div className="flex items-center gap-1.5 text-indigo-700 font-semibold">
           <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
           <span>
-            {actualLessons} {actualLessons === 1 ? 'Lesson (Topic)' : 'Lessons (Topics)'}
+            {actualLessons} {actualLessons === 1 ? 'Lesson' : 'Lessons'}
           </span>
         </div>
 

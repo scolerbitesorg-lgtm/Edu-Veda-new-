@@ -18,6 +18,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, pass: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
+  loginGuest: () => void;
   signup: (name: string, email: string, mobile: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfileData: (name?: string, mobile?: string) => Promise<void>;
@@ -202,6 +203,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(newProfile);
   };
 
+  const loginGuest = () => {
+    const guestProfile: UserProfile = {
+      uid: 'guest_student_' + Math.random().toString(36).substring(2, 9),
+      name: 'Guest Student',
+      email: 'student@eduveda.app',
+      mobile: '',
+      role: 'user',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem('edu_veda_demo_session', JSON.stringify(guestProfile));
+    } catch {}
+    setUser({
+      uid: guestProfile.uid,
+      email: guestProfile.email,
+      displayName: guestProfile.name,
+    } as unknown as User);
+    setProfile(guestProfile);
+    setLoading(false);
+  };
+
   const signup = async (name: string, email: string, mobile: string, pass: string) => {
     const newProfile = await registerWithEmail(name, email, mobile, pass);
     if (auth.currentUser) {
@@ -244,6 +267,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         login,
         loginGoogle,
+        loginGuest,
         signup,
         logout,
         updateProfileData,

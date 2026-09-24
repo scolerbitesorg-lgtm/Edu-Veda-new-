@@ -16,6 +16,9 @@ import { CategoriesPage } from './pages/CategoriesPage';
 import { SubjectsPage } from './pages/SubjectsPage';
 import { SubjectDetailPage } from './pages/SubjectDetailPage';
 import { TopicDetailPage } from './pages/TopicDetailPage';
+import { TopicMCQPage } from './pages/TopicMCQPage';
+import { TopicNotesListPage } from './pages/TopicNotesListPage';
+import { TopicLecturesListPage } from './pages/TopicLecturesListPage';
 import { VideoLecturePage } from './pages/VideoLecturePage';
 import { NoteViewerPage } from './pages/NoteViewerPage';
 import { NotesPage } from './pages/NotesPage';
@@ -49,6 +52,9 @@ const MainAppContent: React.FC = () => {
   const [activePage, setActivePage] = useState<AppPage>('home');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [selectedTopicMcqId, setSelectedTopicMcqId] = useState<string | null>(null);
+  const [selectedTopicNotesListId, setSelectedTopicNotesListId] = useState<string | null>(null);
+  const [selectedTopicLecturesListId, setSelectedTopicLecturesListId] = useState<string | null>(null);
   const [selectedLectureId, setSelectedLectureId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [launchedTestId, setLaunchedTestId] = useState<string | null>(null);
@@ -93,6 +99,9 @@ const MainAppContent: React.FC = () => {
     setActivePage(tab as AppPage);
     setSelectedSubjectId(null);
     setSelectedTopicId(null);
+    setSelectedTopicMcqId(null);
+    setSelectedTopicNotesListId(null);
+    setSelectedTopicLecturesListId(null);
     setSelectedLectureId(null);
     setSelectedNoteId(null);
   };
@@ -101,6 +110,9 @@ const MainAppContent: React.FC = () => {
   const handleNavigatePage = (page: string, _params?: any) => {
     setSelectedSubjectId(null);
     setSelectedTopicId(null);
+    setSelectedTopicMcqId(null);
+    setSelectedTopicNotesListId(null);
+    setSelectedTopicLecturesListId(null);
     setSelectedLectureId(null);
     setSelectedNoteId(null);
     setActivePage(page as AppPage);
@@ -115,11 +127,17 @@ const MainAppContent: React.FC = () => {
     if (type === 'subject') {
       setSelectedSubjectId(id);
       setSelectedTopicId(null);
+      setSelectedTopicMcqId(null);
+      setSelectedTopicNotesListId(null);
+      setSelectedTopicLecturesListId(null);
       setSelectedLectureId(null);
       setSelectedNoteId(null);
       setActivePage('home');
     } else if (type === 'topic') {
       setSelectedTopicId(id);
+      setSelectedTopicMcqId(null);
+      setSelectedTopicNotesListId(null);
+      setSelectedTopicLecturesListId(null);
       setSelectedLectureId(null);
       setSelectedNoteId(null);
       setActivePage('home');
@@ -142,6 +160,14 @@ const MainAppContent: React.FC = () => {
     setLaunchedTestId(test.id);
     setActivePage('test');
   };
+
+  // Check if dedicated full-screen immersion is active (no main header/bottom nav)
+  const isDedicatedFullScreen =
+    Boolean(selectedTopicMcqId) ||
+    Boolean(selectedTopicNotesListId) ||
+    Boolean(selectedTopicLecturesListId) ||
+    Boolean(selectedNoteId) ||
+    Boolean(selectedLectureId);
 
   // Global loading
   if (authLoading) {
@@ -175,7 +201,7 @@ const MainAppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F8F9FD] text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-800">
       {/* Optional Announcement Notice */}
-      {activePage !== 'ai' && settings?.showBanner && settings?.bannerNotice && (
+      {!isDedicatedFullScreen && activePage !== 'ai' && settings?.showBanner && settings?.bannerNotice && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white text-xs font-semibold px-4 py-2 text-center shadow-xs flex items-center justify-center gap-2 sticky top-0 z-50 animate-in fade-in duration-200">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse shrink-0" />
           <span className="truncate max-w-sm sm:max-w-md">{settings.bannerNotice}</span>
@@ -183,37 +209,56 @@ const MainAppContent: React.FC = () => {
       )}
 
       {/* Top Header */}
-      {activePage !== 'ai' && (
-        <Header
-          onOpenProfile={() => setActivePage('profile')}
-        />
+      {!isDedicatedFullScreen && activePage !== 'ai' && (
+        <Header onOpenProfile={() => setActivePage('profile')} />
       )}
 
       {/* Main Content Area */}
       <main className={`flex-1 w-full mx-auto ${selectedLectureId ? 'max-w-4xl' : 'max-w-md'}`}>
-        {/* Dedicated Standalone Reader: Note Viewer Page */}
+        {/* 1. Deepest Leaf View: Note Viewer Page */}
         {selectedNoteId ? (
           <NoteViewerPage
             noteId={selectedNoteId}
             onBack={() => setSelectedNoteId(null)}
           />
         ) : selectedLectureId ? (
-          /* Deep Link: Video Lecture Player */
+          /* 2. Deepest Leaf View: Video Lecture Player */
           <VideoLecturePage
             lectureId={selectedLectureId}
             onBack={() => setSelectedLectureId(null)}
             onSelectLecture={id => setSelectedLectureId(id)}
           />
+        ) : selectedTopicMcqId ? (
+          /* 3. Dedicated MCQ Quiz Page */
+          <TopicMCQPage
+            topicId={selectedTopicMcqId}
+            onBack={() => setSelectedTopicMcqId(null)}
+          />
+        ) : selectedTopicNotesListId ? (
+          /* 4. Dedicated Topic Notes List */
+          <TopicNotesListPage
+            topicId={selectedTopicNotesListId}
+            onBack={() => setSelectedTopicNotesListId(null)}
+            onSelectNote={id => setSelectedNoteId(id)}
+          />
+        ) : selectedTopicLecturesListId ? (
+          /* 5. Dedicated Topic Lectures List */
+          <TopicLecturesListPage
+            topicId={selectedTopicLecturesListId}
+            onBack={() => setSelectedTopicLecturesListId(null)}
+            onSelectLecture={id => setSelectedLectureId(id)}
+          />
         ) : selectedTopicId ? (
-          /* Deep Link: Topic Detail Hub (Lectures, Notes, MCQs) */
+          /* 6. Study Unit Preview Hub */
           <TopicDetailPage
             topicId={selectedTopicId}
             onBack={() => setSelectedTopicId(null)}
-            onSelectLecture={id => setSelectedLectureId(id)}
-            onSelectNote={id => setSelectedNoteId(id)}
+            onOpenMCQs={() => setSelectedTopicMcqId(selectedTopicId)}
+            onOpenNotes={() => setSelectedTopicNotesListId(selectedTopicId)}
+            onOpenLectures={() => setSelectedTopicLecturesListId(selectedTopicId)}
           />
         ) : selectedSubjectId ? (
-          /* Deep Link: Subject Topics / Lessons List */
+          /* 7. Subject Topics / Lessons List */
           <SubjectDetailPage
             subjectId={selectedSubjectId}
             onBack={() => setSelectedSubjectId(null)}
@@ -239,9 +284,7 @@ const MainAppContent: React.FC = () => {
             {/* 2. Categories */}
             {activePage === 'categories' && (
               <CategoriesPage
-                onSelectSubject={id => {
-                  setSelectedSubjectId(id);
-                }}
+                onSelectSubject={id => setSelectedSubjectId(id)}
                 onBack={() => setActivePage('home')}
               />
             )}
@@ -249,9 +292,7 @@ const MainAppContent: React.FC = () => {
             {/* 3. Subjects */}
             {activePage === 'subjects' && (
               <SubjectsPage
-                onSelectSubject={id => {
-                  setSelectedSubjectId(id);
-                }}
+                onSelectSubject={id => setSelectedSubjectId(id)}
                 onBack={() => setActivePage('home')}
               />
             )}
@@ -279,8 +320,7 @@ const MainAppContent: React.FC = () => {
             {activePage === 'pyqs' && (
               <PYQsPage
                 onBack={() => setActivePage('home')}
-                onOpenPdf={(url, title) => {
-                  // If it has a URL, can open in note viewer or browser
+                onOpenPdf={(url, _title) => {
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
               />
@@ -323,8 +363,8 @@ const MainAppContent: React.FC = () => {
         onOpenNote={id => setSelectedNoteId(id)}
       />
 
-      {/* Fixed Mobile Bottom Navigation */}
-      {activePage !== 'ai' && (
+      {/* Fixed Mobile Bottom Navigation (Hidden on dedicated full-screen pages) */}
+      {!isDedicatedFullScreen && activePage !== 'ai' && (
         <BottomNavigation
           currentTab={bottomNavTab}
           onChangeTab={handleTabChange}

@@ -243,7 +243,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
         <EmptyState
           icon={BarChart3}
           title="No Topic Quizzes Attempted"
-          description="Practice topic MCQs from the syllabus or MCQ Practice tab to see your records."
+          description="Practice lesson MCQs from the syllabus or MCQ Practice tab to see your records."
         />
       ) : (
         <div className="space-y-3">

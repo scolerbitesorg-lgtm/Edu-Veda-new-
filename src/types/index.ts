@@ -65,6 +65,56 @@ export interface Announcement {
   [key: string]: any;
 }
 
+export interface QuickLink {
+  id: string;
+  title: string;
+  subtitle?: string;
+  icon?: string;
+  image?: string;
+  badge?: string;
+  color?: string;
+  bgColor?: string;
+  url?: string;
+  link?: string;
+  actionType?: 'link' | 'test' | 'subject' | 'ai' | 'notes' | 'pyq' | 'categories' | string;
+  targetId?: string;
+  order?: number;
+  published?: boolean;
+  [key: string]: any;
+}
+
+export interface CustomDynamicItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  image?: string;
+  icon?: string;
+  badge?: string;
+  buttonText?: string;
+  url?: string;
+  link?: string;
+  actionType?: 'link' | 'test' | 'subject' | 'ai' | 'notes' | 'pyq' | 'category' | string;
+  targetId?: string;
+  [key: string]: any;
+}
+
+export interface CustomSection {
+  id: string;
+  sectionId?: string;
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  type?: 'cards' | 'banner' | 'grid' | 'list' | 'notice' | 'html' | 'custom' | string;
+  order?: number;
+  visible?: boolean;
+  items?: CustomDynamicItem[];
+  htmlContent?: string;
+  buttonText?: string;
+  buttonUrl?: string;
+  [key: string]: any;
+}
+
 export interface Subject {
   id: string;
   name: string;
@@ -244,6 +294,8 @@ export interface UserProgress {
   lectureId?: string;
   progress: number; // 0 - 100 percentage
   completed: boolean;
+  videoCompleted?: boolean;
+  mcqCompleted?: boolean;
   updatedAt: string;
 }
 

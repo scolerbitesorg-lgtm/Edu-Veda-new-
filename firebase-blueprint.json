@@ -378,6 +378,30 @@
     "/appSettings/{settingId}": {
       "schema": "AppSettings",
       "description": "Global application configuration documents"
+    },
+    "/settings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "General settings and AI multi-provider configuration"
+    },
+    "/app-config/{configId}": {
+      "schema": "AppSettings",
+      "description": "Admin application and AI settings collection"
+    },
+    "/banners/{bannerId}": {
+      "schema": "Banner",
+      "description": "Promotional banners and hero carousels"
+    },
+    "/customSections/{sectionId}": {
+      "schema": "HomeSection",
+      "description": "Dynamic custom home sections and blocks added by admin"
+    },
+    "/quickLinks/{linkId}": {
+      "schema": "QuickLink",
+      "description": "Quick action links and feature shortcuts"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Important announcements, news, and alerts"
     }
   }
 }

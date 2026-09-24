@@ -1,4 +1,7 @@
 export { DynamicBanner } from './DynamicBanner';
+export { DynamicAnnouncementBar } from './DynamicAnnouncementBar';
+export { DynamicQuickLinks } from './DynamicQuickLinks';
+export { DynamicCustomSection } from './DynamicCustomSection';
 export { DynamicSection } from './DynamicSection';
 export { DynamicCard } from './DynamicCard';
 export { DynamicCategory } from './DynamicCategory';
