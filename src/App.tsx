@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase/config';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -45,23 +45,104 @@ export type AppPage =
   | 'profile'
   | 'ai';
 
+export interface NavigationState {
+  activePage: AppPage;
+  selectedSubjectId: string | null;
+  selectedTopicId: string | null;
+  selectedTopicMcqId: string | null;
+  selectedTopicNotesListId: string | null;
+  selectedTopicLecturesListId: string | null;
+  selectedLectureId: string | null;
+  selectedNoteId: string | null;
+  launchedTestId: string | null;
+}
+
+const defaultHomeState: NavigationState = {
+  activePage: 'home',
+  selectedSubjectId: null,
+  selectedTopicId: null,
+  selectedTopicMcqId: null,
+  selectedTopicNotesListId: null,
+  selectedTopicLecturesListId: null,
+  selectedLectureId: null,
+  selectedNoteId: null,
+  launchedTestId: null,
+};
+
 const MainAppContent: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
 
-  // Navigation states
-  const [activePage, setActivePage] = useState<AppPage>('home');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
-  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
-  const [selectedTopicMcqId, setSelectedTopicMcqId] = useState<string | null>(null);
-  const [selectedTopicNotesListId, setSelectedTopicNotesListId] = useState<string | null>(null);
-  const [selectedTopicLecturesListId, setSelectedTopicLecturesListId] = useState<string | null>(null);
-  const [selectedLectureId, setSelectedLectureId] = useState<string | null>(null);
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [launchedTestId, setLaunchedTestId] = useState<string | null>(null);
+  // Navigation State with integrated Browser History Stack
+  const [navState, setNavState] = useState<NavigationState>(() => {
+    if (typeof window !== 'undefined' && window.history.state) {
+      return {
+        ...defaultHomeState,
+        ...window.history.state,
+      };
+    }
+    return defaultHomeState;
+  });
 
   // App settings & maintenance
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+
+  // Sync with browser history popstate event (hardware/browser back button)
+  useEffect(() => {
+    try {
+      if (!window.history.state) {
+        window.history.replaceState(defaultHomeState, '');
+      }
+    } catch {}
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state) {
+        setNavState({
+          ...defaultHomeState,
+          ...event.state,
+        });
+      } else {
+        setNavState(defaultHomeState);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Navigate to a new screen while pushing into browser history
+  const navigateTo = useCallback((changes: Partial<NavigationState>) => {
+    setNavState((prev) => {
+      const next: NavigationState = {
+        ...prev,
+        ...changes,
+      };
+      try {
+        window.history.pushState(next, '');
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // One-page back handler for both UI buttons and popstate triggers
+  const handleGoBack = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+    } else {
+      // Fallback if accessed directly: step back logically without exiting
+      setNavState((prev) => {
+        if (prev.selectedNoteId) return { ...prev, selectedNoteId: null };
+        if (prev.selectedLectureId) return { ...prev, selectedLectureId: null };
+        if (prev.selectedTopicMcqId) return { ...prev, selectedTopicMcqId: null };
+        if (prev.selectedTopicNotesListId) return { ...prev, selectedTopicNotesListId: null };
+        if (prev.selectedTopicLecturesListId) return { ...prev, selectedTopicLecturesListId: null };
+        if (prev.selectedTopicId) return { ...prev, selectedTopicId: null };
+        if (prev.selectedSubjectId) return { ...prev, selectedSubjectId: null };
+        if (prev.activePage !== 'home') return { ...prev, activePage: 'home' };
+        return prev;
+      });
+    }
+  }, []);
 
   // Real-time onSnapshot listener on 'app-config' document in Firestore
   useEffect(() => {
@@ -69,9 +150,9 @@ const MainAppContent: React.FC = () => {
     try {
       unsubDirect = onSnapshot(
         doc(db, 'app-config', 'config'),
-        docSnap => {
+        (docSnap) => {
           if (docSnap.exists()) {
-            setSettings(prev => ({
+            setSettings((prev) => ({
               ...prev,
               ...(docSnap.data() as AppSettings),
             }));
@@ -81,8 +162,8 @@ const MainAppContent: React.FC = () => {
       );
     } catch {}
 
-    const unsubService = subscribeToAppConfig(liveConfig => {
-      setSettings(prev => ({
+    const unsubService = subscribeToAppConfig((liveConfig) => {
+      setSettings((prev) => ({
         ...prev,
         ...liveConfig,
       }));
@@ -96,26 +177,30 @@ const MainAppContent: React.FC = () => {
 
   // Handle Tab Switch from bottom navigation
   const handleTabChange = (tab: TabType) => {
-    setActivePage(tab as AppPage);
-    setSelectedSubjectId(null);
-    setSelectedTopicId(null);
-    setSelectedTopicMcqId(null);
-    setSelectedTopicNotesListId(null);
-    setSelectedTopicLecturesListId(null);
-    setSelectedLectureId(null);
-    setSelectedNoteId(null);
+    navigateTo({
+      activePage: tab as AppPage,
+      selectedSubjectId: null,
+      selectedTopicId: null,
+      selectedTopicMcqId: null,
+      selectedTopicNotesListId: null,
+      selectedTopicLecturesListId: null,
+      selectedLectureId: null,
+      selectedNoteId: null,
+    });
   };
 
   // Switch page handler
   const handleNavigatePage = (page: string, _params?: any) => {
-    setSelectedSubjectId(null);
-    setSelectedTopicId(null);
-    setSelectedTopicMcqId(null);
-    setSelectedTopicNotesListId(null);
-    setSelectedTopicLecturesListId(null);
-    setSelectedLectureId(null);
-    setSelectedNoteId(null);
-    setActivePage(page as AppPage);
+    navigateTo({
+      activePage: page as AppPage,
+      selectedSubjectId: null,
+      selectedTopicId: null,
+      selectedTopicMcqId: null,
+      selectedTopicNotesListId: null,
+      selectedTopicLecturesListId: null,
+      selectedLectureId: null,
+      selectedNoteId: null,
+    });
   };
 
   // Search Result Selection Handler
@@ -125,49 +210,72 @@ const MainAppContent: React.FC = () => {
     _context?: { subjectId?: string; topicId?: string }
   ) => {
     if (type === 'subject') {
-      setSelectedSubjectId(id);
-      setSelectedTopicId(null);
-      setSelectedTopicMcqId(null);
-      setSelectedTopicNotesListId(null);
-      setSelectedTopicLecturesListId(null);
-      setSelectedLectureId(null);
-      setSelectedNoteId(null);
-      setActivePage('home');
+      navigateTo({
+        selectedSubjectId: id,
+        selectedTopicId: null,
+        selectedTopicMcqId: null,
+        selectedTopicNotesListId: null,
+        selectedTopicLecturesListId: null,
+        selectedLectureId: null,
+        selectedNoteId: null,
+        activePage: 'home',
+      });
     } else if (type === 'topic') {
-      setSelectedTopicId(id);
-      setSelectedTopicMcqId(null);
-      setSelectedTopicNotesListId(null);
-      setSelectedTopicLecturesListId(null);
-      setSelectedLectureId(null);
-      setSelectedNoteId(null);
-      setActivePage('home');
+      navigateTo({
+        selectedTopicId: id,
+        selectedTopicMcqId: null,
+        selectedTopicNotesListId: null,
+        selectedTopicLecturesListId: null,
+        selectedLectureId: null,
+        selectedNoteId: null,
+        activePage: 'home',
+      });
     } else if (type === 'lecture') {
-      setSelectedLectureId(id);
-      setSelectedNoteId(null);
-      setActivePage('home');
+      navigateTo({
+        selectedLectureId: id,
+        selectedNoteId: null,
+        activePage: 'home',
+      });
     } else if (type === 'note') {
-      setSelectedNoteId(id);
+      navigateTo({
+        selectedNoteId: id,
+      });
     } else if (type === 'test') {
-      setLaunchedTestId(id);
-      setActivePage('test');
+      navigateTo({
+        launchedTestId: id,
+        activePage: 'test',
+      });
     } else if (type === 'pyq') {
-      setActivePage('pyqs');
+      navigateTo({
+        activePage: 'pyqs',
+      });
     }
   };
 
   // Launch mock test
   const handleStartTest = (test: MockTest) => {
-    setLaunchedTestId(test.id);
-    setActivePage('test');
+    navigateTo({
+      launchedTestId: test.id,
+      activePage: 'test',
+    });
   };
 
   // Check if dedicated full-screen immersion is active (no main header/bottom nav)
   const isDedicatedFullScreen =
-    Boolean(selectedTopicMcqId) ||
-    Boolean(selectedTopicNotesListId) ||
-    Boolean(selectedTopicLecturesListId) ||
-    Boolean(selectedNoteId) ||
-    Boolean(selectedLectureId);
+    Boolean(navState.selectedTopicMcqId) ||
+    Boolean(navState.selectedTopicNotesListId) ||
+    Boolean(navState.selectedTopicLecturesListId) ||
+    Boolean(navState.selectedNoteId) ||
+    Boolean(navState.selectedLectureId) ||
+    Boolean(navState.selectedTopicId) ||
+    Boolean(navState.selectedSubjectId) ||
+    navState.activePage === 'categories' ||
+    navState.activePage === 'subjects' ||
+    navState.activePage === 'pyqs' ||
+    navState.activePage === 'mcqs' ||
+    navState.activePage === 'results' ||
+    navState.activePage === 'profile' ||
+    navState.activePage === 'ai';
 
   // Global loading
   if (authLoading) {
@@ -185,95 +293,109 @@ const MainAppContent: React.FC = () => {
 
   // Not authenticated
   if (!user) {
-    return <AuthPage onSuccess={() => setActivePage('home')} />;
+    return <AuthPage onSuccess={() => navigateTo({ activePage: 'home' })} />;
   }
 
   // Map activePage to bottom tab indicator
   const bottomNavTab: TabType =
-    activePage === 'notes'
+    navState.activePage === 'notes'
       ? 'notes'
-      : activePage === 'test'
+      : navState.activePage === 'test'
       ? 'test'
-      : activePage === 'ai'
+      : navState.activePage === 'ai'
       ? 'ai'
       : 'home';
 
   return (
-    <div className={`min-h-screen ${selectedLectureId ? 'bg-slate-950' : 'bg-[#F8F9FD]'} text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-800`}>
+    <div
+      className={`min-h-screen ${
+        navState.selectedLectureId ? 'bg-slate-950' : 'bg-[#F8F9FD]'
+      } text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-800`}
+    >
       {/* Optional Announcement Notice */}
-      {!isDedicatedFullScreen && activePage !== 'ai' && settings?.showBanner && settings?.bannerNotice && (
+      {!isDedicatedFullScreen && settings?.showBanner && settings?.bannerNotice && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white text-xs font-semibold px-4 py-2 text-center shadow-xs flex items-center justify-center gap-2 sticky top-0 z-50 animate-in fade-in duration-200">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse shrink-0" />
           <span className="truncate max-w-sm sm:max-w-md">{settings.bannerNotice}</span>
         </div>
       )}
 
-      {/* Top Header */}
-      {!isDedicatedFullScreen && activePage !== 'ai' && (
-        <Header onOpenProfile={() => setActivePage('profile')} />
+      {/* Top Header (Visible on standard root tabs) */}
+      {!isDedicatedFullScreen && (
+        <Header onOpenProfile={() => navigateTo({ activePage: 'profile' })} />
       )}
 
       {/* Main Content Area */}
-      <main className={`flex-1 w-full mx-auto ${selectedLectureId ? 'max-w-5xl' : 'max-w-md'}`}>
-        {/* 1. Deepest Leaf View: Note Viewer Page */}
-        {selectedNoteId ? (
+      <main
+        className={`flex-1 w-full mx-auto ${
+          navState.selectedLectureId
+            ? 'max-w-5xl'
+            : isDedicatedFullScreen
+            ? 'max-w-2xl'
+            : 'max-w-md sm:max-w-xl'
+        }`}
+      >
+        {/* 1. Note Viewer Page */}
+        {navState.selectedNoteId ? (
           <NoteViewerPage
-            noteId={selectedNoteId}
-            onBack={() => setSelectedNoteId(null)}
+            noteId={navState.selectedNoteId}
+            onBack={handleGoBack}
           />
-        ) : selectedLectureId ? (
-          /* 2. Deepest Leaf View: Video Lecture Player */
+        ) : navState.selectedLectureId ? (
+          /* 2. Video Lecture Player */
           <VideoLecturePage
-            lectureId={selectedLectureId}
-            onBack={() => setSelectedLectureId(null)}
-            onSelectLecture={id => setSelectedLectureId(id)}
+            lectureId={navState.selectedLectureId}
+            onBack={handleGoBack}
+            onSelectLecture={(id) => navigateTo({ selectedLectureId: id })}
           />
-        ) : selectedTopicMcqId ? (
+        ) : navState.selectedTopicMcqId ? (
           /* 3. Dedicated MCQ Quiz Page */
           <TopicMCQPage
-            topicId={selectedTopicMcqId}
-            onBack={() => setSelectedTopicMcqId(null)}
+            topicId={navState.selectedTopicMcqId}
+            onBack={handleGoBack}
           />
-        ) : selectedTopicNotesListId ? (
+        ) : navState.selectedTopicNotesListId ? (
           /* 4. Dedicated Topic Notes List */
           <TopicNotesListPage
-            topicId={selectedTopicNotesListId}
-            onBack={() => setSelectedTopicNotesListId(null)}
-            onSelectNote={id => setSelectedNoteId(id)}
+            topicId={navState.selectedTopicNotesListId}
+            onBack={handleGoBack}
+            onSelectNote={(id) => navigateTo({ selectedNoteId: id })}
           />
-        ) : selectedTopicLecturesListId ? (
+        ) : navState.selectedTopicLecturesListId ? (
           /* 5. Dedicated Topic Lectures List */
           <TopicLecturesListPage
-            topicId={selectedTopicLecturesListId}
-            onBack={() => setSelectedTopicLecturesListId(null)}
-            onSelectLecture={id => setSelectedLectureId(id)}
+            topicId={navState.selectedTopicLecturesListId}
+            onBack={handleGoBack}
+            onSelectLecture={(id) => navigateTo({ selectedLectureId: id })}
           />
-        ) : selectedTopicId ? (
+        ) : navState.selectedTopicId ? (
           /* 6. Study Unit Preview Hub */
           <TopicDetailPage
-            topicId={selectedTopicId}
-            onBack={() => setSelectedTopicId(null)}
-            onOpenMCQs={() => setSelectedTopicMcqId(selectedTopicId)}
-            onOpenNotes={() => setSelectedTopicNotesListId(selectedTopicId)}
-            onOpenLectures={() => setSelectedTopicLecturesListId(selectedTopicId)}
+            topicId={navState.selectedTopicId}
+            onBack={handleGoBack}
+            onOpenMCQs={() => navigateTo({ selectedTopicMcqId: navState.selectedTopicId })}
+            onOpenNotes={() => navigateTo({ selectedTopicNotesListId: navState.selectedTopicId })}
+            onOpenLectures={() => navigateTo({ selectedTopicLecturesListId: navState.selectedTopicId })}
           />
-        ) : selectedSubjectId ? (
+        ) : navState.selectedSubjectId ? (
           /* 7. Subject Topics / Lessons List */
           <SubjectDetailPage
-            subjectId={selectedSubjectId}
-            onBack={() => setSelectedSubjectId(null)}
-            onSelectTopic={id => setSelectedTopicId(id)}
+            subjectId={navState.selectedSubjectId}
+            onBack={handleGoBack}
+            onSelectTopic={(id) => navigateTo({ selectedTopicId: id })}
           />
         ) : (
-          /* User App 10 Main Pages */
+          /* User App 10 Main Screens */
           <>
             {/* 1. Home */}
-            {activePage === 'home' && (
+            {navState.activePage === 'home' && (
               <HomePage
-                onSelectSubject={id => setSelectedSubjectId(id)}
+                onSelectSubject={(id) => navigateTo({ selectedSubjectId: id })}
                 onSelectTopic={(topicId, subjectId) => {
-                  if (subjectId) setSelectedSubjectId(subjectId);
-                  setSelectedTopicId(topicId);
+                  navigateTo({
+                    selectedSubjectId: subjectId || null,
+                    selectedTopicId: topicId,
+                  });
                 }}
                 onSelectResult={handleSelectSearchResult}
                 onNavigatePage={handleNavigatePage}
@@ -282,44 +404,46 @@ const MainAppContent: React.FC = () => {
             )}
 
             {/* 2. Categories */}
-            {activePage === 'categories' && (
+            {navState.activePage === 'categories' && (
               <CategoriesPage
-                onSelectSubject={id => setSelectedSubjectId(id)}
-                onBack={() => setActivePage('home')}
+                onSelectSubject={(id) => navigateTo({ selectedSubjectId: id })}
+                onBack={handleGoBack}
               />
             )}
 
             {/* 3. Subjects */}
-            {activePage === 'subjects' && (
+            {navState.activePage === 'subjects' && (
               <SubjectsPage
-                onSelectSubject={id => setSelectedSubjectId(id)}
-                onBack={() => setActivePage('home')}
+                onSelectSubject={(id) => navigateTo({ selectedSubjectId: id })}
+                onBack={handleGoBack}
               />
             )}
 
             {/* 4. Notes */}
-            {activePage === 'notes' && (
+            {navState.activePage === 'notes' && (
               <NotesPage
-                onOpenNote={id => setSelectedNoteId(id)}
+                onOpenNote={(id) => navigateTo({ selectedNoteId: id })}
                 onSelectTopic={(topicId, subjectId) => {
-                  if (subjectId) setSelectedSubjectId(subjectId);
-                  setSelectedTopicId(topicId);
+                  navigateTo({
+                    selectedSubjectId: subjectId || null,
+                    selectedTopicId: topicId,
+                  });
                 }}
               />
             )}
 
             {/* 5. Mock Tests */}
-            {activePage === 'test' && (
+            {navState.activePage === 'test' && (
               <TestPage
-                initialTestId={launchedTestId}
-                onClearInitialTest={() => setLaunchedTestId(null)}
+                initialTestId={navState.launchedTestId}
+                onClearInitialTest={() => navigateTo({ launchedTestId: null })}
               />
             )}
 
             {/* 6. PYQs */}
-            {activePage === 'pyqs' && (
+            {navState.activePage === 'pyqs' && (
               <PYQsPage
-                onBack={() => setActivePage('home')}
+                onBack={handleGoBack}
                 onOpenPdf={(url, _title) => {
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
@@ -327,30 +451,30 @@ const MainAppContent: React.FC = () => {
             )}
 
             {/* 7. MCQ Practice */}
-            {activePage === 'mcqs' && (
+            {navState.activePage === 'mcqs' && (
               <MCQPracticePage
-                onBack={() => setActivePage('home')}
+                onBack={handleGoBack}
               />
             )}
 
             {/* 8. Results */}
-            {activePage === 'results' && (
+            {navState.activePage === 'results' && (
               <ResultsPage
-                onBack={() => setActivePage('home')}
-                onNavigateToTests={() => setActivePage('test')}
+                onBack={handleGoBack}
+                onNavigateToTests={() => navigateTo({ activePage: 'test' })}
               />
             )}
 
             {/* 9. Profile / Settings */}
-            {activePage === 'profile' && (
+            {navState.activePage === 'profile' && (
               <ProfileSettingsPage
-                onBack={() => setActivePage('home')}
+                onBack={handleGoBack}
               />
             )}
 
             {/* 10. Veda AI Study Assistant */}
-            {activePage === 'ai' && (
-              <VedaAiPage onBack={() => setActivePage('home')} />
+            {navState.activePage === 'ai' && (
+              <VedaAiPage onBack={handleGoBack} />
             )}
           </>
         )}
@@ -360,11 +484,11 @@ const MainAppContent: React.FC = () => {
       <ProfileModal
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
-        onOpenNote={id => setSelectedNoteId(id)}
+        onOpenNote={(id) => navigateTo({ selectedNoteId: id })}
       />
 
       {/* Fixed Mobile Bottom Navigation (Hidden on dedicated full-screen pages) */}
-      {!isDedicatedFullScreen && activePage !== 'ai' && (
+      {!isDedicatedFullScreen && (
         <BottomNavigation
           currentTab={bottomNavTab}
           onChangeTab={handleTabChange}
