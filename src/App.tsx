@@ -199,7 +199,7 @@ const MainAppContent: React.FC = () => {
       : 'home';
 
   return (
-    <div className="min-h-screen bg-[#F8F9FD] text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-800">
+    <div className={`min-h-screen ${selectedLectureId ? 'bg-slate-950' : 'bg-[#F8F9FD]'} text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-800`}>
       {/* Optional Announcement Notice */}
       {!isDedicatedFullScreen && activePage !== 'ai' && settings?.showBanner && settings?.bannerNotice && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white text-xs font-semibold px-4 py-2 text-center shadow-xs flex items-center justify-center gap-2 sticky top-0 z-50 animate-in fade-in duration-200">
@@ -214,7 +214,7 @@ const MainAppContent: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className={`flex-1 w-full mx-auto ${selectedLectureId ? 'max-w-4xl' : 'max-w-md'}`}>
+      <main className={`flex-1 w-full mx-auto ${selectedLectureId ? 'max-w-5xl' : 'max-w-md'}`}>
         {/* 1. Deepest Leaf View: Note Viewer Page */}
         {selectedNoteId ? (
           <NoteViewerPage

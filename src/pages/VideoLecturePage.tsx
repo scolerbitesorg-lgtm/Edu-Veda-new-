@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
   ListVideo,
-  Maximize2,
-  Smartphone,
   SplitSquareVertical,
   LayoutTemplate,
   MonitorPlay,
+  BookOpen,
+  Sparkles,
+  Play,
+  RotateCcw,
 } from 'lucide-react';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { LoadingState } from '../components/LoadingState';
@@ -41,7 +43,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
   const [progress, setProgress] = useState<number>(0);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
 
-  // View modes: 'standard' (16:9 card), 'half' (docked 50% split / side-by-side), 'fullscreen'
+  // View modes: 'standard' (cinema container), 'half' (docked split view), 'fullscreen'
   const [viewMode, setViewMode] = useState<'standard' | 'half' | 'fullscreen'>('standard');
 
   useEffect(() => {
@@ -49,12 +51,12 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
     setError(null);
     let unsubSiblings = () => {};
 
-    const unsubLecture = subscribeToLectureById(lectureId, lec => {
+    const unsubLecture = subscribeToLectureById(lectureId, (lec) => {
       if (lec) {
         setCurrentLecture(lec);
         if (lec.topicId) {
           unsubSiblings();
-          unsubSiblings = subscribeToLecturesByTopic(lec.topicId, siblings => {
+          unsubSiblings = subscribeToLecturesByTopic(lec.topicId, (siblings) => {
             setTopicLectures(siblings || []);
           });
         }
@@ -65,8 +67,8 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
     });
 
     if (user) {
-      fetchUserProgress(user.uid).then(progressList => {
-        const found = progressList.find(p => p.lectureId === lectureId);
+      fetchUserProgress(user.uid).then((progressList) => {
+        const found = progressList.find((p) => p.lectureId === lectureId);
         if (found) {
           setProgress(found.progress);
           setIsCompleted(found.completed || found.progress >= 80);
@@ -83,26 +85,34 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
     };
   }, [lectureId, user]);
 
-  const handleProgressUpdate = async (percent: number) => {
-    const rounded = Math.min(100, Math.max(progress, Math.round(percent)));
-    setProgress(rounded);
-    if ((rounded >= 80 || percent >= 80) && !isCompleted && currentLecture && user) {
-      setIsCompleted(true);
-      playSuccess();
-      await saveUserProgress(user.uid, currentLecture.topicId, currentLecture.id, 100, true);
-    } else if (currentLecture && user && rounded > 0) {
-      await saveUserProgress(user.uid, currentLecture.topicId, currentLecture.id, rounded, false);
-    }
-  };
+  const handleProgressUpdate = useCallback(
+    async (percent: number) => {
+      setProgress((prev) => {
+        const rounded = Math.min(100, Math.max(prev, Math.round(percent)));
+        return rounded;
+      });
 
-  const handleVideoEnded = async () => {
+      if (currentLecture && user && percent > 0) {
+        if (percent >= 80 && !isCompleted) {
+          setIsCompleted(true);
+          playSuccess();
+          await saveUserProgress(user.uid, currentLecture.topicId, currentLecture.id, 100, true);
+        } else {
+          await saveUserProgress(user.uid, currentLecture.topicId, currentLecture.id, Math.round(percent), false);
+        }
+      }
+    },
+    [currentLecture, user, isCompleted, playSuccess]
+  );
+
+  const handleVideoEnded = useCallback(async () => {
     if (currentLecture && user) {
       setIsCompleted(true);
       setProgress(100);
       playSuccess();
       await saveUserProgress(user.uid, currentLecture.topicId, currentLecture.id, 100, true);
     }
-  };
+  }, [currentLecture, user, playSuccess]);
 
   const handleMarkCompleteManually = async () => {
     if (currentLecture && user) {
@@ -113,62 +123,64 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
     }
   };
 
-  const currentIndex = topicLectures.findIndex(l => l.id === lectureId);
+  const currentIndex = topicLectures.findIndex((l) => l.id === lectureId);
   const prevLecture = currentIndex > 0 ? topicLectures[currentIndex - 1] : null;
   const nextLecture = currentIndex < topicLectures.length - 1 ? topicLectures[currentIndex + 1] : null;
 
   return (
     <div
-      className={`transition-all duration-300 ${
+      className={`min-h-screen bg-slate-950 text-slate-100 transition-all duration-300 ${
         viewMode === 'half'
-          ? 'max-w-5xl mx-auto px-3 sm:px-4 pt-1 pb-24'
-          : 'max-w-md mx-auto px-4 pt-2 pb-24 space-y-4'
+          ? 'max-w-6xl mx-auto px-3 sm:px-6 pt-2 pb-24'
+          : 'max-w-4xl mx-auto px-3 sm:px-6 pt-2 pb-24 space-y-4'
       }`}
     >
-      {/* Top Header Navigation */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
+      {/* Top Classroom Header Navigation */}
+      <div className="flex items-center justify-between gap-3 py-3 border-b border-slate-800/80 mb-2">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => {
               playTap();
               onBack();
             }}
-            className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors active:scale-95 shadow-xs"
+            className="w-10 h-10 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition-colors active:scale-95 border border-slate-700 shadow-md cursor-pointer"
             aria-label="Back"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
           <div>
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Classroom Lecture
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 block">
+              Edu Veda Classroom
             </span>
-            {currentLecture && (
-              <span className="text-xs font-semibold text-slate-800 line-clamp-1 max-w-[200px]">
+            {currentLecture ? (
+              <span className="text-sm font-bold text-white line-clamp-1 max-w-[220px] sm:max-w-md">
                 {currentLecture.title}
               </span>
+            ) : (
+              <span className="text-xs text-slate-400">Loading lecture...</span>
             )}
           </div>
         </div>
 
-        {/* View Mode Switcher Pill */}
+        {/* View Mode Options */}
         {currentLecture && (
-          <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl border border-slate-300/40 text-xs font-medium">
+          <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 text-xs font-medium gap-1 shadow-inner">
             <button
               type="button"
               onClick={() => {
                 playTap();
                 setViewMode('standard');
               }}
-              className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                 viewMode === 'standard'
-                  ? 'bg-white text-indigo-600 font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-white'
               }`}
-              title="Standard 16:9 View"
+              title="Cinema 16:9 View"
             >
               <LayoutTemplate className="w-3.5 h-3.5" />
-              <span className="text-[11px] hidden sm:inline">Standard</span>
+              <span className="text-[11px] hidden sm:inline">Cinema</span>
             </button>
 
             <button
@@ -177,23 +189,23 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
                 playTap();
                 setViewMode('half');
               }}
-              className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                 viewMode === 'half'
-                  ? 'bg-white text-indigo-600 font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-white'
               }`}
-              title="Side / Half Screen Split View"
+              title="Split Half Screen View"
             >
               <SplitSquareVertical className="w-3.5 h-3.5" />
-              <span className="text-[11px] hidden sm:inline">Half Screen</span>
+              <span className="text-[11px] hidden sm:inline">Split Screen</span>
             </button>
           </div>
         )}
       </div>
 
       {loading && (
-        <div className="py-12">
-          <LoadingState variant="inline" message="Loading video stream..." />
+        <div className="py-20">
+          <LoadingState variant="inline" message="Opening dedicated classroom player..." />
         </div>
       )}
 
@@ -211,7 +223,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
         <EmptyState
           title="Lecture Not Found"
           description="This lecture does not exist or has been removed."
-          actionText="Go Back"
+          actionText="Return to Lessons"
           onAction={onBack}
         />
       )}
@@ -220,47 +232,40 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
         <div
           className={
             viewMode === 'half'
-              ? 'flex flex-col lg:grid lg:grid-cols-12 gap-4 items-start'
+              ? 'flex flex-col lg:grid lg:grid-cols-12 gap-5 items-start'
               : 'space-y-4'
           }
         >
-          {/* Video Player Box */}
+          {/* Main Video Cinema Container */}
           <div
-            className={`transition-all duration-300 ease-out ${
+            className={
               viewMode === 'half'
-                ? 'w-full lg:col-span-7 sticky top-2 z-30'
-                : 'w-full rounded-2xl overflow-hidden shadow-lg border border-slate-900 bg-black'
-            }`}
-            style={{
-              contain: 'layout paint',
-              WebkitTransform: 'translate3d(0, 0, 0)',
-              transform: 'translate3d(0, 0, 0)',
-            }}
+                ? 'w-full lg:col-span-7 sticky top-3 z-30'
+                : 'w-full'
+            }
           >
-            <div className="rounded-2xl overflow-hidden shadow-xl border border-slate-900 bg-black">
-              <VideoPlayer
-                src={currentLecture.storagePath || currentLecture.videoUrl || ''}
-                title={currentLecture.title}
-                viewMode={viewMode}
-                onChangeViewMode={setViewMode}
-                onProgressUpdate={handleProgressUpdate}
-                onEnded={handleVideoEnded}
-              />
-            </div>
+            <VideoPlayer
+              src={currentLecture.storagePath || currentLecture.videoUrl || ''}
+              title={currentLecture.title}
+              viewMode={viewMode}
+              onChangeViewMode={setViewMode}
+              onProgressUpdate={handleProgressUpdate}
+              onEnded={handleVideoEnded}
+              onBack={onBack}
+            />
 
-            {/* Quick mode indicators in half screen mode */}
             {viewMode === 'half' && (
-              <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-slate-500 font-medium">
-                <span className="flex items-center gap-1 text-indigo-600 font-semibold">
+              <div className="mt-2.5 flex items-center justify-between px-2 text-[11px] text-slate-400 font-medium">
+                <span className="flex items-center gap-1 text-indigo-400 font-semibold">
                   <MonitorPlay className="w-3.5 h-3.5" />
-                  Smooth Half Screen Player
+                  Split Screen Active
                 </span>
-                <span>Scroll below to view notes & lessons</span>
+                <span>Scroll below to view study notes</span>
               </div>
             )}
           </div>
 
-          {/* Scrollable Content Container (Details, Notes, Playlist) */}
+          {/* Details, Playlist & Study Notes Container */}
           <div
             className={`space-y-4 ${
               viewMode === 'half'
@@ -269,47 +274,49 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
             }`}
           >
             {/* Lecture Meta & Progress Card */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
+            <div className="bg-slate-900/90 rounded-3xl p-5 border border-slate-800/80 shadow-xl space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-0.5 rounded-full inline-block mb-1">
-                    Lesson {currentIndex >= 0 ? currentIndex + 1 : 1} of {topicLectures.length || 1}
-                  </span>
-                  <h1 className="text-base font-bold text-slate-900 tracking-tight leading-snug">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider bg-indigo-950/80 border border-indigo-800/50 px-2.5 py-0.5 rounded-full inline-block">
+                      Lesson {currentIndex >= 0 ? currentIndex + 1 : 1} of {topicLectures.length || 1}
+                    </span>
+                    {currentLecture.instructorName && (
+                      <span className="text-[11px] text-slate-300 font-medium">
+                        by <strong className="text-white">{currentLecture.instructorName}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <h1 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">
                     {currentLecture.title}
                   </h1>
-                  {currentLecture.instructorName && (
-                    <p className="text-xs text-indigo-700 font-semibold mt-0.5">
-                      Instructor: {currentLecture.instructorName}
-                    </p>
-                  )}
                 </div>
 
                 {isCompleted ? (
-                  <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 shrink-0">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>100% Watched</span>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-950/80 px-3 py-1.5 rounded-full border border-emerald-800/60 shrink-0">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Completed</span>
                   </div>
                 ) : (
                   <button
                     type="button"
                     onClick={handleMarkCompleteManually}
-                    className="flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-full border border-indigo-200 shrink-0 transition-colors"
+                    className="flex items-center gap-1.5 text-xs font-bold text-indigo-300 bg-indigo-950 hover:bg-indigo-900 px-3.5 py-1.5 rounded-full border border-indigo-700/60 shrink-0 transition-colors cursor-pointer"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <CheckCircle2 className="w-4 h-4 text-indigo-400" />
                     <span>{progress > 0 ? `${progress}% · Mark Done` : 'Mark Done'}</span>
                   </button>
                 )}
               </div>
 
               {currentLecture.description && (
-                <p className="text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-2.5">
-                  {currentLecture.description}
-                </p>
+                <div className="text-xs text-slate-300 leading-relaxed border-t border-slate-800/80 pt-3">
+                  <p>{currentLecture.description}</p>
+                </div>
               )}
 
               {/* Next / Previous Lecture Action Bar */}
-              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800/80">
                 <button
                   type="button"
                   disabled={!prevLecture}
@@ -319,7 +326,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
                       onSelectLecture(prevLecture.id);
                     }
                   }}
-                  className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer border border-slate-800"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   <span>Previous</span>
@@ -334,7 +341,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
                       onSelectLecture(nextLecture.id);
                     }
                   }}
-                  className="flex items-center gap-1 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 disabled:pointer-events-none shadow-sm shadow-indigo-600/20 active:scale-95 transition-all"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:pointer-events-none shadow-lg shadow-indigo-600/30 active:scale-95 transition-all cursor-pointer"
                 >
                   <span>Next Lesson</span>
                   <ChevronRight className="w-4 h-4" />
@@ -344,10 +351,10 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
 
             {/* Playlist / Other Lectures in Topic */}
             {topicLectures.length > 1 && (
-              <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  <ListVideo className="w-4 h-4 text-indigo-600" />
-                  <span>More in this Lesson ({topicLectures.length})</span>
+              <div className="bg-slate-900/90 rounded-3xl p-5 border border-slate-800/80 shadow-xl space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  <ListVideo className="w-4 h-4 text-indigo-400" />
+                  <span>Topic Playlist ({topicLectures.length} Lessons)</span>
                 </div>
 
                 <div className="space-y-2">
@@ -363,18 +370,18 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
                             onSelectLecture(lec.id);
                           }
                         }}
-                        className={`w-full p-3 rounded-2xl border text-left flex items-center justify-between text-xs transition-all ${
+                        className={`w-full p-3 rounded-2xl border text-left flex items-center justify-between text-xs transition-all cursor-pointer ${
                           isCurrent
-                            ? 'bg-indigo-50/80 border-indigo-200 font-bold text-indigo-900 shadow-xs'
-                            : 'bg-white border-slate-100 hover:border-indigo-100 text-slate-700'
+                            ? 'bg-indigo-950/80 border-indigo-700/80 font-bold text-white shadow-md'
+                            : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-600 text-slate-300'
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
                           <span
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 ${
+                            className={`w-6 h-6 rounded-xl flex items-center justify-center text-[11px] font-bold shrink-0 ${
                               isCurrent
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 text-slate-500'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'bg-slate-700 text-slate-400'
                             }`}
                           >
                             {idx + 1}
@@ -383,7 +390,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
                         </div>
 
                         {isCurrent && (
-                          <span className="text-[10px] text-indigo-600 font-bold px-2 py-0.5 rounded-full bg-indigo-100 shrink-0">
+                          <span className="text-[10px] text-indigo-300 font-bold px-2 py-0.5 rounded-full bg-indigo-900/80 border border-indigo-700/50 shrink-0">
                             Playing
                           </span>
                         )}

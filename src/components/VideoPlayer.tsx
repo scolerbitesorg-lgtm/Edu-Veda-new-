@@ -8,12 +8,14 @@ import {
   VolumeX,
   Maximize,
   Minimize,
-  Settings,
-  AlertCircle,
   Loader2,
-  CheckCircle2,
   ChevronLeft,
+  FastForward,
+  Rewind,
   X,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
 } from 'lucide-react';
 
 interface VideoPlayerProps {
@@ -23,6 +25,14 @@ interface VideoPlayerProps {
   onChangeViewMode?: (mode: 'standard' | 'half' | 'fullscreen') => void;
   onProgressUpdate?: (percent: number, currentTime: number) => void;
   onEnded?: () => void;
+  onBack?: () => void;
+}
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
 }
 
 /**
@@ -40,267 +50,107 @@ export function extractYouTubeId(url?: string): string | null {
   return match ? match[1] : null;
 }
 
-export const requestFullscreenElement = async (element: HTMLElement | null) => {
-  if (!element) return;
+/**
+ * Screen orientation helpers for mobile landscape
+ */
+export const lockLandscapeOrientation = async () => {
   try {
-    if (element.requestFullscreen) {
-      await element.requestFullscreen();
-    } else if ((element as any).webkitRequestFullscreen) {
-      await (element as any).webkitRequestFullscreen();
-    } else if ((element as any).msRequestFullscreen) {
-      await (element as any).msRequestFullscreen();
+    const orientation = window.screen?.orientation as any;
+    if (orientation && typeof orientation.lock === 'function') {
+      await orientation.lock('landscape').catch(() => {});
+    } else if (typeof (window.screen as any).lockOrientation === 'function') {
+      (window.screen as any).lockOrientation('landscape');
     }
   } catch (e) {
-    console.warn('Fullscreen request failed:', e);
+    console.warn('Orientation lock notice:', e);
   }
 };
 
-export const exitFullscreenElement = async () => {
+export const unlockOrientation = () => {
   try {
-    if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        await (document as any).webkitExitFullscreen();
-      }
+    const orientation = window.screen?.orientation as any;
+    if (orientation && typeof orientation.unlock === 'function') {
+      orientation.unlock();
+    } else if (typeof (window.screen as any).unlockOrientation === 'function') {
+      (window.screen as any).unlockOrientation();
     }
   } catch (e) {
-    console.warn('Exit fullscreen error:', e);
+    console.warn('Orientation unlock notice:', e);
   }
 };
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({
-  src,
-  title,
-  viewMode = 'standard',
-  onChangeViewMode,
-  onProgressUpdate,
-  onEnded,
-}) => {
-  const ytId = extractYouTubeId(src);
+/**
+ * Format seconds into MM:SS
+ */
+function formatTime(timeInSeconds: number): string {
+  if (isNaN(timeInSeconds) || timeInSeconds < 0) return '00:00';
+  const mins = Math.floor(timeInSeconds / 60);
+  const secs = Math.floor(timeInSeconds % 60);
+  return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+export const VideoPlayer: React.FC<VideoPlayerProps> = (props) => {
+  const ytId = extractYouTubeId(props.src);
 
   if (ytId) {
-    return (
-      <YouTubeVideoEmbed
-        ytId={ytId}
-        title={title}
-        viewMode={viewMode}
-        onChangeViewMode={onChangeViewMode}
-        onProgressUpdate={onProgressUpdate}
-        onEnded={onEnded}
-      />
-    );
+    return <PrivateStreamPlayer key={ytId} ytId={ytId} {...props} />;
   }
 
-  return (
-    <HTML5VideoPlayer
-      src={src}
-      title={title}
-      viewMode={viewMode}
-      onChangeViewMode={onChangeViewMode}
-      onProgressUpdate={onProgressUpdate}
-      onEnded={onEnded}
-    />
-  );
+  return <HTML5VideoPlayer key={props.src} {...props} />;
 };
 
 /**
- * YouTube Video Embed Player with clean fullscreen and top Back button
+ * 🔒 Private Stream Video Player (Zero YouTube Branding + Portrait Side-View Fullscreen)
+ * 1. Zero YouTube Logo / Watermarks:
+ *    - Uses custom cover poster before start so YouTube's red center button is never seen.
+ *    - Scale 1.08 + overflow: hidden strictly crops out YouTube logo, watermark, and header cards.
+ * 2. Portrait Side View Fullscreen:
+ *    - In portrait mode, users can click Fullscreen / Side View to rotate 90 degrees seamlessly into full cinema landscape.
  */
-interface YouTubeVideoEmbedProps {
+interface PrivateStreamProps extends VideoPlayerProps {
   ytId: string;
-  title: string;
-  viewMode?: 'standard' | 'half' | 'fullscreen';
-  onChangeViewMode?: (mode: 'standard' | 'half' | 'fullscreen') => void;
-  onProgressUpdate?: (percent: number, currentTime: number) => void;
-  onEnded?: () => void;
 }
 
-const YouTubeVideoEmbed: React.FC<YouTubeVideoEmbedProps> = ({
+const PrivateStreamPlayer: React.FC<PrivateStreamProps> = ({
   ytId,
   title,
-  viewMode = 'standard',
-  onChangeViewMode,
   onProgressUpdate,
   onEnded,
 }) => {
-  const [markedDone, setMarkedDone] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(viewMode === 'fullscreen');
+  const playerContainerId = useRef<string>(`yt-player-${Math.random().toString(36).substring(2, 9)}`);
+  const ytPlayerRef = useRef<any>(null);
 
-  // Automatic watch progress tracker for YouTube
-  useEffect(() => {
-    // Initial 20% registration
-    onProgressUpdate?.(20, 10);
-
-    // Auto-mark completed (100%) after active 20 seconds of lecture presence
-    const timer = setTimeout(() => {
-      setMarkedDone(true);
-      onProgressUpdate?.(100, 60);
-      onEnded?.();
-    }, 20000);
-
-    return () => clearTimeout(timer);
-  }, [ytId]);
-
-  const handleExitFullscreen = useCallback(async () => {
-    await exitFullscreenElement();
-    setIsFullscreen(false);
-    onChangeViewMode?.('standard');
-  }, [onChangeViewMode]);
-
-  const handleEnterFullscreen = useCallback(async () => {
-    if (containerRef.current) {
-      await requestFullscreenElement(containerRef.current);
-    }
-    setIsFullscreen(true);
-    onChangeViewMode?.('fullscreen');
-  }, [onChangeViewMode]);
-
-  useEffect(() => {
-    const handleFsChange = () => {
-      const isFs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
-      if (!isFs && isFullscreen) {
-        setIsFullscreen(false);
-        onChangeViewMode?.('standard');
-      } else if (isFs && !isFullscreen) {
-        setIsFullscreen(true);
-        onChangeViewMode?.('fullscreen');
-      }
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    document.addEventListener('webkitfullscreenchange', handleFsChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFsChange);
-      document.removeEventListener('webkitfullscreenchange', handleFsChange);
-    };
-  }, [isFullscreen, onChangeViewMode]);
-
-  const handleMarkComplete = () => {
-    setMarkedDone(true);
-    onProgressUpdate?.(100, 100);
-    onEnded?.();
-  };
-
-  const containerClasses = isFullscreen
-    ? 'fixed inset-0 z-[999999] bg-black flex flex-col justify-between overflow-hidden select-none w-screen h-screen'
-    : viewMode === 'half'
-    ? 'relative w-full h-full aspect-video sm:h-[48vh] bg-slate-950 rounded-2xl overflow-hidden shadow-xl border border-slate-800'
-    : 'relative w-full aspect-video bg-slate-950 rounded-2xl overflow-hidden shadow-xl border border-slate-800 flex flex-col justify-between group';
-
-  return (
-    <div ref={containerRef} className={containerClasses}>
-      {/* Top Header Controls Bar in Fullscreen Mode */}
-      {isFullscreen && (
-        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto">
-          {/* Back Button to Exit Fullscreen */}
-          <button
-            type="button"
-            onClick={handleExitFullscreen}
-            className="px-3.5 py-2 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Back</span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-white/90 bg-black/70 px-3 py-1.5 rounded-xl border border-white/10 truncate max-w-[200px]">
-              {title}
-            </span>
-            <button
-              type="button"
-              onClick={handleExitFullscreen}
-              className="w-8 h-8 rounded-xl bg-black/80 hover:bg-black text-white flex items-center justify-center backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg cursor-pointer"
-              aria-label="Exit Fullscreen"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* YouTube Iframe Embed */}
-      <iframe
-        src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1&playsinline=1&fs=1`}
-        title={title || 'YouTube Video Lecture'}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-        allowFullScreen
-        className="w-full h-full object-cover border-0"
-      />
-
-      {/* Top Controls Overlay (when not in fullscreen) */}
-      {!isFullscreen && (
-        <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 pointer-events-auto">
-          <button
-            type="button"
-            onClick={handleEnterFullscreen}
-            className="p-2 rounded-xl text-xs font-bold bg-slate-900/90 hover:bg-slate-900 text-white border border-slate-700/60 shadow-lg backdrop-blur-md active:scale-95 transition-all cursor-pointer"
-            title="Fullscreen"
-          >
-            <Maximize className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleMarkComplete}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer ${
-              markedDone
-                ? 'bg-emerald-600 text-white shadow-emerald-600/30'
-                : 'bg-slate-900/90 hover:bg-slate-900 text-emerald-400 border border-emerald-500/30 shadow-black/40'
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{markedDone ? 'Completed' : 'Mark Done'}</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-/**
- * HTML5 MP4 / Direct Stream Video Player with clean controls and top Back button
- */
-interface HTML5VideoPlayerProps {
-  src: string;
-  title: string;
-  viewMode?: 'standard' | 'half' | 'fullscreen';
-  onChangeViewMode?: (mode: 'standard' | 'half' | 'fullscreen') => void;
-  onProgressUpdate?: (percent: number, currentTime: number) => void;
-  onEnded?: () => void;
-}
-
-const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
-  src,
-  title,
-  viewMode = 'standard',
-  onChangeViewMode,
-  onProgressUpdate,
-  onEnded,
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
+  const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [volume, setVolume] = useState<number>(100);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(viewMode === 'fullscreen');
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isSideViewRotated, setIsSideViewRotated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [hasError, setHasError] = useState<boolean>(false);
+  const [isPlayerReady, setIsPlayerReady] = useState<boolean>(false);
   const [showControls, setShowControls] = useState<boolean>(true);
+
+  // Gesture Feedback
+  const [rippleSide, setRippleSide] = useState<'left' | 'right' | null>(null);
+  const [rippleText, setRippleText] = useState<string>('');
+  const rippleTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const lastTapTimeRef = useRef<number>(0);
+  const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const formatTime = (timeInSeconds: number) => {
-    if (isNaN(timeInSeconds)) return '00:00';
-    const mins = Math.floor(timeInSeconds / 60);
-    const secs = Math.floor(timeInSeconds % 60);
-    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
+  const onProgressUpdateRef = useRef(onProgressUpdate);
+  onProgressUpdateRef.current = onProgressUpdate;
 
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+
+  // Auto-hide custom controls after 3 seconds of playback
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
     if (controlsTimeoutRef.current) {
@@ -309,73 +159,311 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
     if (isPlaying) {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
-      }, 3500);
+        setShowSpeedMenu(false);
+      }, 3000);
     }
   }, [isPlaying]);
 
-  const handlePlayPause = useCallback(() => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
+  // Load YouTube IFrame API SDK
+  useEffect(() => {
+    let isCancelled = false;
+
+    const initPlayer = () => {
+      if (isCancelled || !window.YT || !window.YT.Player) return;
+
+      try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+          ytPlayerRef.current.destroy();
+        }
+
+        ytPlayerRef.current = new window.YT.Player(playerContainerId.current, {
+          videoId: ytId,
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            modestbranding: 1,
+            rel: 0,
+            iv_load_policy: 3,
+            disablekb: 1,
+            fs: 0,
+            playsinline: 1,
+            origin: typeof window !== 'undefined' ? window.location.origin : '',
+          },
+          events: {
+            onReady: (event: any) => {
+              if (isCancelled) return;
+              setIsPlayerReady(true);
+              setIsLoading(false);
+              try {
+                const dur = event.target.getDuration();
+                if (dur && dur > 0) setDuration(dur);
+              } catch {}
+            },
+            onStateChange: (event: any) => {
+              if (isCancelled) return;
+              // 1 = playing, 2 = paused, 0 = ended, 3 = buffering
+              if (event.data === 1) {
+                setIsPlaying(true);
+                setHasStarted(true);
+                setIsLoading(false);
+                const dur = event.target.getDuration();
+                if (dur && dur > 0) setDuration(dur);
+              } else if (event.data === 2) {
+                setIsPlaying(false);
+              } else if (event.data === 0) {
+                setIsPlaying(false);
+                onProgressUpdateRef.current?.(100, duration);
+                onEndedRef.current?.();
+              } else if (event.data === 3) {
+                setIsLoading(true);
+              }
+            },
+            onError: () => {
+              if (isCancelled) return;
+              setIsLoading(false);
+            },
+          },
+        });
+      } catch (err) {
+        console.error('Error initializing private player:', err);
+      }
+    };
+
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      tag.async = true;
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+
+      const prevCallback = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (prevCallback) prevCallback();
+        initPlayer();
+      };
     } else {
-      videoRef.current.play().catch(() => {});
+      initPlayer();
     }
-  }, [isPlaying]);
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const targetTime = parseFloat(e.target.value);
-    if (videoRef.current) {
-      videoRef.current.currentTime = targetTime;
-      setCurrentTime(targetTime);
+    return () => {
+      isCancelled = true;
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch {}
+      }
+    };
+  }, [ytId]);
+
+  // Sync playback time every 500ms
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (ytPlayerRef.current && isPlaying) {
+        try {
+          const curr = ytPlayerRef.current.getCurrentTime();
+          if (typeof curr === 'number' && !isNaN(curr)) {
+            setCurrentTime(curr);
+            const total = duration || ytPlayerRef.current.getDuration() || 300;
+            if (total > 0) {
+              setDuration(total);
+              const percent = Math.min(100, Math.round((curr / total) * 100));
+              onProgressUpdateRef.current?.(percent, curr);
+            }
+          }
+        } catch {}
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, duration]);
+
+  // Sync fullscreen change events
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNativeFs = Boolean(document.fullscreenElement);
+      if (!isNativeFs && isFullscreen) {
+        setIsFullscreen(false);
+        setIsSideViewRotated(false);
+        unlockOrientation();
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, [isFullscreen]);
+
+  // First Play / Toggle Play handler
+  const handleStartPlay = () => {
+    setHasStarted(true);
+    setIsLoading(true);
+    if (ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+        resetControlsTimer();
+      } catch {
+        setIsPlaying(true);
+      }
     }
   };
 
-  const handleSkip = (seconds: number) => {
-    if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(
-      0,
-      Math.min(duration, videoRef.current.currentTime + seconds)
-    );
+  const handleTogglePlay = useCallback(() => {
+    if (!hasStarted) {
+      handleStartPlay();
+      return;
+    }
+    if (!ytPlayerRef.current) return;
+    try {
+      if (isPlaying) {
+        ytPlayerRef.current.pauseVideo();
+        setIsPlaying(false);
+        setShowControls(true);
+      } else {
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+        resetControlsTimer();
+      }
+    } catch {
+      setIsPlaying((prev) => !prev);
+    }
+  }, [isPlaying, hasStarted, resetControlsTimer]);
+
+  // Seek +/- 10s
+  const handleSkip = useCallback(
+    (seconds: number) => {
+      if (!ytPlayerRef.current) return;
+      try {
+        const curr = ytPlayerRef.current.getCurrentTime() || currentTime;
+        const target = Math.max(0, Math.min(duration || 99999, curr + seconds));
+        ytPlayerRef.current.seekTo(target, true);
+        setCurrentTime(target);
+        resetControlsTimer();
+
+        const side = seconds > 0 ? 'right' : 'left';
+        setRippleSide(side);
+        setRippleText(seconds > 0 ? `+${seconds}s` : `${seconds}s`);
+
+        if (rippleTimerRef.current) clearTimeout(rippleTimerRef.current);
+        rippleTimerRef.current = setTimeout(() => {
+          setRippleSide(null);
+        }, 700);
+      } catch {}
+    },
+    [currentTime, duration, resetControlsTimer]
+  );
+
+  // Gesture Tap / Double-tap detection
+  const handleGestureClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const isLeft = clickX < rect.width / 2;
+    const now = Date.now();
+    const timeDiff = now - lastTapTimeRef.current;
+
+    if (timeDiff < 280) {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      lastTapTimeRef.current = 0;
+      handleSkip(isLeft ? -10 : 10);
+    } else {
+      lastTapTimeRef.current = now;
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = setTimeout(() => {
+        setShowControls((prev) => !prev);
+        if (!showControls) {
+          resetControlsTimer();
+        }
+      }, 290);
+    }
+  };
+
+  // Seekbar handlers
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const target = parseFloat(e.target.value);
+    setCurrentTime(target);
+    if (ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.seekTo(target, true);
+      } catch {}
+    }
+  };
+
+  // Volume & Mute
+  const handleToggleMute = () => {
+    if (!ytPlayerRef.current) return;
+    try {
+      if (isMuted) {
+        ytPlayerRef.current.unMute();
+        setIsMuted(false);
+      } else {
+        ytPlayerRef.current.mute();
+        setIsMuted(true);
+      }
+    } catch {}
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVol = parseFloat(e.target.value);
+    const newVol = parseInt(e.target.value, 10);
     setVolume(newVol);
-    if (videoRef.current) {
-      videoRef.current.volume = newVol;
-      setIsMuted(newVol === 0);
+    if (ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.setVolume(newVol);
+        if (newVol === 0) {
+          ytPlayerRef.current.mute();
+          setIsMuted(true);
+        } else if (isMuted) {
+          ytPlayerRef.current.unMute();
+          setIsMuted(false);
+        }
+      } catch {}
     }
   };
 
-  const handleToggleMute = () => {
-    if (!videoRef.current) return;
-    const newMuted = !isMuted;
-    setIsMuted(newMuted);
-    videoRef.current.muted = newMuted;
-  };
-
-  const handleSetSpeed = (speed: number) => {
-    setPlaybackRate(speed);
-    if (videoRef.current) {
-      videoRef.current.playbackRate = speed;
-    }
+  // Speed
+  const handleSetSpeed = (rate: number) => {
+    setPlaybackRate(rate);
     setShowSpeedMenu(false);
+    if (ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.setPlaybackRate(rate);
+      } catch {}
+    }
+    resetControlsTimer();
   };
 
-  // Fullscreen Handlers
+  // Fullscreen & Side-View (90 degree rotation in portrait)
   const handleEnterFullscreen = useCallback(async () => {
-    if (containerRef.current) {
-      await requestFullscreenElement(containerRef.current);
-    }
     setIsFullscreen(true);
-    onChangeViewMode?.('fullscreen');
-  }, [onChangeViewMode]);
+    // Check if in portrait mobile orientation
+    const isPortrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+    if (isPortrait) {
+      setIsSideViewRotated(true);
+    }
+    if (containerRef.current && typeof containerRef.current.requestFullscreen === 'function') {
+      try {
+        await containerRef.current.requestFullscreen().catch(() => {});
+      } catch {}
+    }
+    await lockLandscapeOrientation();
+    resetControlsTimer();
+  }, [resetControlsTimer]);
 
-  const handleExitFullscreen = useCallback(async () => {
-    await exitFullscreenElement();
+  const handleExitFullscreen = useCallback(() => {
     setIsFullscreen(false);
-    onChangeViewMode?.('standard');
-  }, [onChangeViewMode]);
+    setIsSideViewRotated(false);
+    if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+      try {
+        document.exitFullscreen().catch(() => {});
+      } catch {}
+    }
+    unlockOrientation();
+    resetControlsTimer();
+  }, [resetControlsTimer]);
 
   const handleToggleFullscreen = () => {
     if (!isFullscreen) {
@@ -385,268 +473,424 @@ const HTML5VideoPlayer: React.FC<HTML5VideoPlayerProps> = ({
     }
   };
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      const isFs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
-      if (!isFs && isFullscreen) {
-        setIsFullscreen(false);
-        onChangeViewMode?.('standard');
-      } else if (isFs && !isFullscreen) {
-        setIsFullscreen(true);
-        onChangeViewMode?.('fullscreen');
-      }
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    };
-  }, [isFullscreen, onChangeViewMode]);
+  const handleToggleSideViewRotation = () => {
+    setIsSideViewRotated((prev) => !prev);
+    resetControlsTimer();
+  };
 
-  const containerClasses = isFullscreen
-    ? 'fixed inset-0 z-[999999] bg-black flex flex-col justify-between overflow-hidden select-none w-screen h-screen'
-    : viewMode === 'half'
-    ? 'relative w-full h-[45vh] max-h-[480px] bg-black rounded-2xl overflow-hidden shadow-2xl select-none group'
-    : 'relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-lg select-none group';
+  // Responsive Styles with Side-View 90deg rotation support for portrait screens
+  const containerStyle: React.CSSProperties = isFullscreen
+    ? isSideViewRotated
+      ? {
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          width: '100vh',
+          height: '100vw',
+          transform: 'translate(-50%, -50%) rotate(90deg)',
+          transformOrigin: 'center center',
+          zIndex: 999999,
+          backgroundColor: '#000000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          margin: 0,
+          padding: 0,
+        }
+      : {
+          position: 'fixed',
+          inset: 0,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 999999,
+          backgroundColor: '#000000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          margin: 0,
+          padding: 0,
+        }
+    : {
+        position: 'relative',
+        width: '100%',
+        aspectRatio: '16 / 9',
+        backgroundColor: '#000000',
+        borderRadius: '16px',
+        overflow: 'hidden',
+      };
 
   return (
     <div
       ref={containerRef}
+      style={containerStyle}
       onMouseMove={resetControlsTimer}
-      onClick={resetControlsTimer}
-      className={containerClasses}
+      onContextMenu={(e) => e.preventDefault()}
+      className={`select-none ${
+        isFullscreen
+          ? 'fixed z-[999999] bg-black shadow-2xl'
+          : 'relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800'
+      }`}
     >
-      {/* Top Header in Fullscreen */}
-      {isFullscreen && (
+      {/* 
+        1. Pure Video Viewport
+        Scale 1.08 + overflow: hidden strictly crops out YouTube logo, watermark, and header cards completely
+      */}
+      <div className="absolute inset-0 w-full h-full bg-black flex items-center justify-center overflow-hidden pointer-events-none">
         <div
-          className={`absolute top-3 left-3 right-3 z-30 flex items-center justify-between transition-opacity duration-300 pointer-events-auto ${
-            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          {/* Back Button to Exit Fullscreen */}
-          <button
-            type="button"
-            onClick={handleExitFullscreen}
-            className="px-3.5 py-2 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border border-white/20 active:scale-95 transition-all shadow-lg cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Back</span>
-          </button>
+          id={playerContainerId.current}
+          style={{
+            width: '100%',
+            height: '100%',
+            transform: 'scale(1.08)',
+            transformOrigin: 'center center',
+          }}
+          className="w-full h-full"
+        />
+      </div>
 
-          <span className="text-xs font-semibold text-white/90 bg-black/70 px-3 py-1.5 rounded-xl border border-white/10 truncate max-w-[250px]">
-            {title}
+      {/* 
+        2. Custom Edu Veda Video Poster (Replaces YouTube Red Central Button)
+        Hides YouTube's native logo, thumbnail, and central button entirely
+      */}
+      {!hasStarted && (
+        <div
+          onClick={handleStartPlay}
+          className="absolute inset-0 z-35 bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 flex flex-col items-center justify-center p-6 text-center cursor-pointer group"
+        >
+          {/* Subtle background glow */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-600/20 via-transparent to-transparent pointer-events-none" />
+
+          {/* Big Custom Play Button */}
+          <div className="relative mb-4">
+            <div className="w-18 h-18 sm:w-22 sm:h-22 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center shadow-2xl shadow-indigo-500/50 group-hover:scale-105 group-active:scale-95 transition-all border-2 border-white/25">
+              <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1.5" />
+            </div>
+            <div className="absolute -inset-2 rounded-full bg-indigo-500/20 animate-ping pointer-events-none" />
+          </div>
+
+          <span className="text-sm sm:text-base font-bold text-white max-w-md line-clamp-1 drop-shadow-md">
+            {title || 'Edu Veda Private Lecture'}
           </span>
+          <div className="mt-2 flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-[11px] font-semibold tracking-wide">
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Click to Stream Lecture in HD</span>
+          </div>
         </div>
       )}
 
+      {/* 
+        3. Clean Fullscreen Header (Back & Side-View toggles)
+      */}
+      {isFullscreen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`absolute top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/90 via-black/40 to-transparent px-4 sm:px-6 py-3.5 flex items-center justify-between transition-opacity duration-300 pointer-events-auto ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 max-w-[70%]">
+            <button
+              type="button"
+              onClick={handleExitFullscreen}
+              className="px-3.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold flex items-center gap-1.5 backdrop-blur-md active:scale-95 transition-all cursor-pointer shadow-md"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Back</span>
+            </button>
+
+            <span className="text-xs sm:text-sm font-bold text-white tracking-tight truncate block drop-shadow-sm">
+              {title || 'Edu Veda Private Stream'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Side-View Landscape Switcher */}
+            <button
+              type="button"
+              onClick={handleToggleSideViewRotation}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md transition-all cursor-pointer shadow-md active:scale-90 ${
+                isSideViewRotated
+                  ? 'bg-indigo-600 text-white border border-indigo-400'
+                  : 'bg-white/20 hover:bg-white/30 text-white'
+              }`}
+              title="Toggle Portrait Side-View (90° Rotation)"
+            >
+              <Smartphone className={`w-4 h-4 ${isSideViewRotated ? 'rotate-90' : ''}`} />
+              <span className="hidden sm:inline">{isSideViewRotated ? 'Side-View ON' : 'Rotate Side-View'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExitFullscreen}
+              className="w-9 h-9 rounded-xl bg-white/20 hover:bg-rose-600/90 text-white flex items-center justify-center backdrop-blur-md transition-all cursor-pointer shadow-md active:scale-90"
+              title="Exit Fullscreen (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 
+        4. Transparent Gesture Interaction Surface (z-index: 20)
+      */}
+      {hasStarted && (
+        <div
+          onClick={handleGestureClick}
+          className="absolute inset-0 z-20 w-full h-full cursor-pointer select-none bg-transparent"
+          aria-label="Private stream interaction layer"
+        >
+          {/* Double-Tap Visual Indicator Left (-10s) */}
+          {rippleSide === 'left' && (
+            <div className="absolute left-0 top-0 bottom-0 w-1/2 bg-white/15 backdrop-blur-xs flex flex-col items-center justify-center text-white rounded-r-full animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+              <div className="w-12 h-12 rounded-full bg-black/75 flex items-center justify-center mb-1 shadow-lg border border-white/20">
+                <Rewind className="w-6 h-6 text-white fill-white" />
+              </div>
+              <span className="text-xs font-extrabold tracking-wider bg-black/80 px-2.5 py-0.5 rounded-full border border-white/20">
+                {rippleText}
+              </span>
+            </div>
+          )}
+
+          {/* Double-Tap Visual Indicator Right (+10s) */}
+          {rippleSide === 'right' && (
+            <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-white/15 backdrop-blur-xs flex flex-col items-center justify-center text-white rounded-l-full animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+              <div className="w-12 h-12 rounded-full bg-black/75 flex items-center justify-center mb-1 shadow-lg border border-white/20">
+                <FastForward className="w-6 h-6 text-white fill-white" />
+              </div>
+              <span className="text-xs font-extrabold tracking-wider bg-black/80 px-2.5 py-0.5 rounded-full border border-white/20">
+                {rippleText}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 
+        5. Big Center Play Button (Visible when paused after started)
+      */}
+      {hasStarted && !isLoading && !isPlaying && isPlayerReady && (
+        <button
+          type="button"
+          onClick={handleTogglePlay}
+          className="absolute inset-0 m-auto z-30 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-indigo-600/95 hover:bg-indigo-600 text-white flex items-center justify-center shadow-2xl shadow-indigo-600/50 transition-transform active:scale-90 cursor-pointer backdrop-blur-xs border-2 border-white/20"
+          aria-label="Play Stream"
+        >
+          <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1.5" />
+        </button>
+      )}
+
+      {/* 
+        6. Stream Loading Spinner
+      */}
+      {hasStarted && isLoading && (
+        <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white pointer-events-none">
+          <Loader2 className="w-9 h-9 animate-spin text-indigo-400 mb-2.5" />
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Connecting Private HD Stream...</span>
+          </div>
+        </div>
+      )}
+
+      {/* 
+        7. Custom Edu Veda Classroom Controls Bar (Bottom)
+      */}
+      {hasStarted && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/95 via-black/80 to-transparent p-3.5 sm:p-4 pt-6 transition-opacity duration-300 text-white pointer-events-auto ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          {/* Custom Progress Scrubber */}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[11px] font-mono font-medium text-slate-300 min-w-[34px]">
+              {formatTime(currentTime)}
+            </span>
+            <div className="relative flex-1 flex items-center">
+              <input
+                type="range"
+                min="0"
+                max={duration || 300}
+                step="1"
+                value={currentTime}
+                onChange={handleSeekChange}
+                className="w-full h-1.5 bg-white/25 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:h-2 transition-all"
+              />
+            </div>
+            <span className="text-[11px] font-mono font-medium text-slate-300 min-w-[34px] text-right">
+              {formatTime(duration || 300)}
+            </span>
+          </div>
+
+          {/* Buttons Row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Play/Pause */}
+              <button
+                type="button"
+                onClick={handleTogglePlay}
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer active:scale-95 bg-white/10"
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
+              </button>
+
+              {/* Rewind 10s */}
+              <button
+                type="button"
+                onClick={() => handleSkip(-10)}
+                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer active:scale-95"
+                title="Rewind 10s"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+
+              {/* Forward 10s */}
+              <button
+                type="button"
+                onClick={() => handleSkip(10)}
+                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer active:scale-95"
+                title="Forward 10s"
+              >
+                <RotateCw className="w-4 h-4" />
+              </button>
+
+              {/* Volume */}
+              <div className="flex items-center gap-1.5 ml-1">
+                <button
+                  type="button"
+                  onClick={handleToggleMute}
+                  className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+                  title={isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {isMuted || volume === 0 ? (
+                    <VolumeX className="w-4 h-4 text-rose-400" />
+                  ) : (
+                    <Volume2 className="w-4 h-4" />
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="w-12 sm:w-16 h-1 bg-white/25 rounded appearance-none cursor-pointer accent-indigo-500 hidden sm:block"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Speed Selector */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                  className="px-2 py-1 bg-white/15 hover:bg-white/25 rounded-md text-[11px] font-bold transition-colors cursor-pointer border border-white/10"
+                >
+                  {playbackRate}x
+                </button>
+
+                {showSpeedMenu && (
+                  <div className="absolute bottom-9 right-0 bg-slate-900/95 border border-slate-700 backdrop-blur-md rounded-xl p-1 shadow-2xl flex flex-col gap-0.5 z-40 min-w-[70px]">
+                    {[0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                      <button
+                        key={speed}
+                        type="button"
+                        onClick={() => handleSetSpeed(speed)}
+                        className={`px-2.5 py-1 rounded-lg text-xs text-left transition-colors cursor-pointer ${
+                          playbackRate === speed
+                            ? 'bg-indigo-600 text-white font-bold'
+                            : 'text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Fullscreen Toggle with Side-View */}
+              <button
+                type="button"
+                onClick={handleToggleFullscreen}
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer active:scale-95 bg-white/10 border border-white/10"
+                title={isFullscreen ? 'Exit Fullscreen' : 'Landscape Side-View Fullscreen'}
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * HTML5 Video Player
+ */
+const HTML5VideoPlayer: React.FC<VideoPlayerProps> = ({
+  src,
+  onProgressUpdate,
+  onEnded,
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+
+  const onProgressUpdateRef = useRef(onProgressUpdate);
+  onProgressUpdateRef.current = onProgressUpdate;
+
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800"
+    >
       <video
         ref={videoRef}
         src={src}
         playsInline
+        controls
         preload="metadata"
-        onWaiting={() => setIsLoading(true)}
-        onCanPlay={() => {
-          setIsLoading(false);
-          setHasError(false);
-        }}
-        onLoadedMetadata={() => {
-          if (videoRef.current) {
-            setDuration(videoRef.current.duration || 0);
-          }
-          setIsLoading(false);
-        }}
         onTimeUpdate={() => {
           if (videoRef.current) {
             const current = videoRef.current.currentTime;
             setCurrentTime(current);
             const total = videoRef.current.duration || 1;
             const percent = Math.min(100, Math.round((current / total) * 100));
-            // Automatic done triggers when reaching >= 75% watch duration
-            if (percent >= 75) {
-              onProgressUpdate?.(100, current);
-            } else {
-              onProgressUpdate?.(percent, current);
-            }
+            onProgressUpdateRef.current?.(percent, current);
           }
         }}
-        onPlay={() => {
-          setIsPlaying(true);
-          resetControlsTimer();
-        }}
-        onPause={() => {
-          setIsPlaying(false);
-          setShowControls(true);
-        }}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         onEnded={() => {
           setIsPlaying(false);
-          onProgressUpdate?.(100, duration);
-          onEnded?.();
+          onProgressUpdateRef.current?.(100, duration);
+          onEndedRef.current?.();
         }}
-        onError={() => {
-          setIsLoading(false);
-          setHasError(true);
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
         }}
-        onClick={handlePlayPause}
-        className="w-full h-full object-contain cursor-pointer"
+        className="w-full h-full object-contain"
       />
-
-      {/* Loading Overlay */}
-      {isLoading && !hasError && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center text-white pointer-events-none">
-          <Loader2 className="w-10 h-10 animate-spin text-indigo-400 mb-2" />
-          <span className="text-xs font-medium tracking-wide">Buffering Video...</span>
-        </div>
-      )}
-
-      {/* Error Overlay */}
-      {hasError && (
-        <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-4 text-center text-white">
-          <AlertCircle className="w-10 h-10 text-rose-500 mb-2" />
-          <h4 className="text-sm font-semibold">Video Stream Unavailable</h4>
-          <p className="text-xs text-slate-300 max-w-xs mt-1">
-            Unable to stream this video file. Please verify video link or network.
-          </p>
-        </div>
-      )}
-
-      {/* Big Center Play/Pause Button */}
-      {!isLoading && !hasError && !isPlaying && (
-        <button
-          type="button"
-          onClick={handlePlayPause}
-          className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-indigo-600/90 hover:bg-indigo-600 text-white flex items-center justify-center shadow-xl shadow-indigo-600/30 transition-transform active:scale-95 z-10 cursor-pointer"
-          aria-label="Play Video"
-        >
-          <Play className="w-7 h-7 fill-white ml-1" />
-        </button>
-      )}
-
-      {/* Controls Bar */}
-      <div
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 pt-6 transition-opacity duration-300 text-white z-20 ${
-          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        {/* Progress Scrubber */}
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-[10px] font-mono font-medium text-slate-300">
-            {formatTime(currentTime)}
-          </span>
-          <div className="relative flex-1 flex items-center">
-            <input
-              type="range"
-              min="0"
-              max={duration || 100}
-              value={currentTime}
-              onChange={handleSeek}
-              className="w-full h-1.5 bg-white/30 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:h-2 transition-all"
-            />
-          </div>
-          <span className="text-[10px] font-mono font-medium text-slate-300">
-            {formatTime(duration)}
-          </span>
-        </div>
-
-        {/* Buttons Row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePlayPause}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-              title={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSkip(-10)}
-              className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-              title="Rewind 10s"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSkip(10)}
-              className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-              title="Forward 10s"
-            >
-              <RotateCw className="w-4 h-4" />
-            </button>
-
-            {/* Volume */}
-            <div className="flex items-center gap-1.5 ml-1">
-              <button
-                type="button"
-                onClick={handleToggleMute}
-                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-rose-400" />
-                ) : (
-                  <Volume2 className="w-4 h-4" />
-                )}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={isMuted ? 0 : volume}
-                onChange={handleVolumeChange}
-                className="w-12 h-1 bg-white/30 rounded appearance-none cursor-pointer accent-indigo-500 hidden sm:block"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Speed Selector */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[11px] font-bold transition-colors cursor-pointer"
-              >
-                {playbackRate}x
-              </button>
-
-              {showSpeedMenu && (
-                <div className="absolute bottom-8 right-0 bg-slate-900 border border-slate-700 rounded-xl p-1 shadow-2xl flex flex-col gap-0.5 z-40">
-                  {[0.75, 1, 1.25, 1.5, 2].map(speed => (
-                    <button
-                      key={speed}
-                      type="button"
-                      onClick={() => handleSetSpeed(speed)}
-                      className={`px-3 py-1 rounded text-xs text-left transition-colors cursor-pointer ${
-                        playbackRate === speed
-                          ? 'bg-indigo-600 text-white font-bold'
-                          : 'text-slate-300 hover:bg-white/10'
-                      }`}
-                    >
-                      {speed}x
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Fullscreen Button */}
-            <button
-              type="button"
-              onClick={handleToggleFullscreen}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-            >
-              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

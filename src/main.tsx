@@ -27,9 +27,6 @@ class GlobalErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   private handleReset = () => {
-    try {
-      localStorage.removeItem('edu_veda_demo_session');
-    } catch {}
     window.location.reload();
   };
 
