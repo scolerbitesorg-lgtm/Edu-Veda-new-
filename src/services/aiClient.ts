@@ -80,16 +80,16 @@ class AIClientService {
     // Refresh config in background without blocking current request
     fetchAppConfig().catch(() => {});
 
-    // 2. Call the backend AI endpoint with snappy 12s timeout
+    // 2. Call the backend AI endpoint with snappy 5s timeout
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         try {
-          controller.abort(new DOMException('AI request timed out after 12s', 'TimeoutError'));
+          controller.abort(new DOMException('AI request timed out after 5s', 'TimeoutError'));
         } catch {
           controller.abort();
         }
-      }, 12000);
+      }, 5000);
 
       const response = await fetch('/api/veda-ai', {
         method: 'POST',
@@ -111,10 +111,15 @@ class AIClientService {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const payload = await response.json();
+        const payload = await response.json().catch(() => null);
 
-        // Standardized backend response format
-        if (payload && payload.success === true && payload.data?.reply) {
+        // Standardized backend response format from a real AI provider
+        if (
+          payload &&
+          payload.success === true &&
+          payload.data?.reply &&
+          payload.provider !== 'educational-knowledge-engine'
+        ) {
           return {
             success: true,
             data: payload.data as T,
@@ -124,7 +129,11 @@ class AIClientService {
         }
 
         // Backwards compatible reply handling
-        if (payload?.reply && typeof payload.reply === 'string') {
+        if (
+          payload?.reply &&
+          typeof payload.reply === 'string' &&
+          payload.provider !== 'educational-knowledge-engine'
+        ) {
           return {
             success: true,
             data: { reply: payload.reply.trim() } as unknown as T,
@@ -134,10 +143,14 @@ class AIClientService {
         }
       }
     } catch (err: any) {
-      console.warn('[AI Client] Backend endpoint unavailable, attempting direct fallback:', err?.message || err);
+      console.warn('[AI Client] Backend endpoint bypassed or timed out, executing direct fast client provider:', err?.message || err);
     }
 
-    // 3. Client-side direct Gemini API fallback if API key is present
+    const systemInstruction =
+      params.systemPrompt ||
+      'You are Veda AI, an expert academic tutor on Edu Veda. Provide accurate, structured, and exam-focused answers in Hindi/English with high precision.';
+
+    // 3. Direct Client-Side Gemini Execution (Blazing fast ~1s directly from browser)
     const clientGeminiKey =
       (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GEMINI_API_KEY : '') ||
       multiSettings?.gemini?.apiKey ||
@@ -164,10 +177,8 @@ class AIClientService {
           model: 'gemini-3.8-flash',
           contents: formattedContents,
           config: {
-            systemInstruction:
-              params.systemPrompt ||
-              'You are Veda AI, an expert academic tutor on Edu Veda. Provide accurate, clear, and structured answers in Hindi/English for students preparing for competitive exams and academic syllabus.',
-            temperature: 0.5,
+            systemInstruction,
+            temperature: 0.4,
           },
         });
 
@@ -181,11 +192,103 @@ class AIClientService {
           };
         }
       } catch (clientErr) {
-        console.warn('[AI Client] Direct client Gemini fallback failed:', clientErr);
+        console.warn('[AI Client] Direct client Gemini failed:', clientErr);
       }
     }
 
-    // 4. Graceful Educational Knowledge Engine Fallback
+    // 4. Direct Client-Side Groq Execution (~300ms ultra-fast)
+    const clientGroqKey =
+      (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GROQ_API_KEY : '') ||
+      multiSettings?.groq?.apiKey ||
+      '';
+
+    if (clientGroqKey && clientGroqKey.trim()) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${clientGroqKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: multiSettings?.groq?.model || 'llama3-8b-8192',
+            temperature: 0.5,
+            max_tokens: 2048,
+            messages: [
+              { role: 'system', content: systemInstruction },
+              ...(params.history || []).slice(-6).map(h => ({
+                role: h.role === 'assistant' || h.role === 'model' ? 'assistant' : 'user',
+                content: h.text,
+              })),
+              { role: 'user', content: cleanPrompt },
+            ],
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const reply = data?.choices?.[0]?.message?.content?.trim();
+          if (reply) {
+            return {
+              success: true,
+              data: { reply } as unknown as T,
+              provider: 'groq (direct-client)',
+              model: 'llama3-8b-8192',
+            };
+          }
+        }
+      } catch (groqErr) {
+        console.warn('[AI Client] Direct client Groq failed:', groqErr);
+      }
+    }
+
+    // 5. Direct Client-Side OpenRouter Execution
+    const clientOpenRouterKey =
+      (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_OPENROUTER_API_KEY : '') ||
+      multiSettings?.openrouter?.apiKey ||
+      '';
+
+    if (clientOpenRouterKey && clientOpenRouterKey.trim()) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${clientOpenRouterKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: multiSettings?.openrouter?.model || 'meta-llama/llama-3.3-70b-instruct',
+            temperature: 0.5,
+            max_tokens: 2048,
+            messages: [
+              { role: 'system', content: systemInstruction },
+              ...(params.history || []).slice(-6).map(h => ({
+                role: h.role === 'assistant' || h.role === 'model' ? 'assistant' : 'user',
+                content: h.text,
+              })),
+              { role: 'user', content: cleanPrompt },
+            ],
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const reply = data?.choices?.[0]?.message?.content?.trim();
+          if (reply) {
+            return {
+              success: true,
+              data: { reply } as unknown as T,
+              provider: 'openrouter (direct-client)',
+              model: 'meta-llama/llama-3.3-70b-instruct',
+            };
+          }
+        }
+      } catch (orErr) {
+        console.warn('[AI Client] Direct client OpenRouter failed:', orErr);
+      }
+    }
+
+    // 6. Pedagogical Knowledge Engine Fallback
     try {
       const educationalReply = generateVedaAiEducationalResponse(cleanPrompt);
       if (educationalReply) {
@@ -197,7 +300,7 @@ class AIClientService {
       }
     } catch {}
 
-    // 5. Clean error message
+    // 7. Clean error message
     return {
       success: false,
       code: 'SERVICE_UNAVAILABLE',

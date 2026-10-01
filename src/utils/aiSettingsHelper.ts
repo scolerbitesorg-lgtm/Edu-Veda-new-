@@ -19,7 +19,7 @@ export function normalizeMultiAISettings(rawConfig: any): MultiAISettings {
   if (!rawConfig || typeof rawConfig !== 'object') {
     return {
       enableAutoFailover: true,
-      activeOrder: ['openrouter', 'groq', 'gemini', 'openai', 'anthropic'],
+      activeOrder: ['gemini', 'groq', 'openrouter', 'openai', 'anthropic'],
     };
   }
 
@@ -143,7 +143,7 @@ export function normalizeMultiAISettings(rawConfig: any): MultiAISettings {
         enabled: true,
       };
     } else if (genericProvider === 'gemini' || genericKey.startsWith('AIza') || genericKey.startsWith('AQ.')) {
-      gemini = gemini || { apiKey: genericKey, model: genericModel || 'gemini-3.6-flash', enabled: true };
+      gemini = gemini || { apiKey: genericKey, model: genericModel || 'gemini-3.8-flash', enabled: true };
     } else if (genericProvider === 'openai' || genericKey.startsWith('sk-proj-') || genericKey.startsWith('sk-admin-')) {
       openai = openai || { apiKey: genericKey, model: genericModel || 'gpt-4o-mini', enabled: true };
     } else if (genericProvider === 'anthropic' || genericKey.startsWith('sk-ant-')) {
@@ -164,13 +164,13 @@ export function normalizeMultiAISettings(rawConfig: any): MultiAISettings {
   }
 
   const configuredWithKeys: string[] = [];
-  if (openrouter?.apiKey && openrouter.enabled) configuredWithKeys.push('openrouter');
-  if (groq?.apiKey && groq.enabled) configuredWithKeys.push('groq');
   if (gemini?.apiKey && gemini.enabled) configuredWithKeys.push('gemini');
+  if (groq?.apiKey && groq.enabled) configuredWithKeys.push('groq');
+  if (openrouter?.apiKey && openrouter.enabled) configuredWithKeys.push('openrouter');
   if (openai?.apiKey && openai.enabled) configuredWithKeys.push('openai');
   if (anthropic?.apiKey && anthropic.enabled) configuredWithKeys.push('anthropic');
 
-  const defaultBaseOrder = ['openrouter', 'groq', 'gemini', 'openai', 'anthropic'];
+  const defaultBaseOrder = ['gemini', 'groq', 'openrouter', 'openai', 'anthropic'];
   const baseOrder = userActiveOrder.length > 0 ? userActiveOrder : defaultBaseOrder;
 
   const activeOrder = [

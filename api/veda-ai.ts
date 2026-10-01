@@ -1,4 +1,4 @@
-import { processVedaAiServerRequest } from '../src/server/aiBackend.js';
+import { processVedaAiServerRequest } from '../src/server/aiBackend';
 
 export default async function handler(req: any, res: any) {
   // CORS headers
