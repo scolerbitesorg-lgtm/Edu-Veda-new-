@@ -101,6 +101,10 @@ export function subscribeToAppConfig(callback: (settings: AppSettings) => void):
 
 export const subscribeToAppSettings = subscribeToAppConfig;
 
+export function getCachedAppConfig(): AppSettings {
+  return cachedSettings;
+}
+
 export async function fetchAppConfig(): Promise<AppSettings> {
   try {
     const fetchPromises = CONFIG_DOCS.map(([col, id]) =>

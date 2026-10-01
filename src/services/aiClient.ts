@@ -13,8 +13,9 @@
  * The frontend does NOT directly call any external AI provider or expose any API keys.
  */
 
-import { fetchAppConfig } from './settings';
+import { getCachedAppConfig, fetchAppConfig } from './settings';
 import { generateVedaAiEducationalResponse } from '../data/educationalKnowledge';
+import { GoogleGenAI } from '@google/genai';
 import type { MultiAISettings } from '../types';
 import { normalizeMultiAISettings } from '../utils/aiSettingsHelper';
 
@@ -69,28 +70,26 @@ class AIClientService {
       };
     }
 
-    // 1. Retrieve dynamic admin-managed configuration from Firestore
+    // 1. Retrieve cached configuration instantly (0ms delay)
     let multiSettings: MultiAISettings | undefined;
-    try {
-      const config = await fetchAppConfig();
-      if (config) {
-        multiSettings = normalizeMultiAISettings(config);
-      }
-    } catch (e) {
-      console.warn('[AI Client] Unable to load Firestore AI settings, backend defaults will be used:', e);
+    const cachedConfig = getCachedAppConfig();
+    if (cachedConfig) {
+      multiSettings = normalizeMultiAISettings(cachedConfig);
     }
 
-    // 2. Call the secure backend AI endpoint
+    // Refresh config in background without blocking current request
+    fetchAppConfig().catch(() => {});
+
+    // 2. Call the backend AI endpoint with snappy 12s timeout
     try {
       const controller = new AbortController();
-      // Allow adequate time for server-side multi-provider failover
       const timeoutId = setTimeout(() => {
         try {
-          controller.abort(new DOMException('AI request timed out after 35s', 'TimeoutError'));
+          controller.abort(new DOMException('AI request timed out after 12s', 'TimeoutError'));
         } catch {
           controller.abort();
         }
-      }, 35000);
+      }, 12000);
 
       const response = await fetch('/api/veda-ai', {
         method: 'POST',
@@ -100,7 +99,7 @@ class AIClientService {
         body: JSON.stringify({
           feature: params.feature,
           prompt: cleanPrompt,
-          message: cleanPrompt, // backwards compatibility
+          message: cleanPrompt,
           systemPrompt: params.systemPrompt,
           history: (params.history || []).slice(-6),
           options: params.options || {},
@@ -115,7 +114,7 @@ class AIClientService {
         const payload = await response.json();
 
         // Standardized backend response format
-        if (payload && payload.success === true && payload.data) {
+        if (payload && payload.success === true && payload.data?.reply) {
           return {
             success: true,
             data: payload.data as T,
@@ -133,28 +132,60 @@ class AIClientService {
             model: payload.model,
           };
         }
-
-        if (payload?.success === false) {
-          return {
-            success: false,
-            code: payload.code || 'AI_ERROR',
-            message: payload.message || 'AI service is temporarily unavailable. Please try again later.',
-          };
-        }
       }
     } catch (err: any) {
-      if (
-        err?.name === 'AbortError' ||
-        err?.name === 'TimeoutError' ||
-        err?.message?.toLowerCase().includes('aborted')
-      ) {
-        console.warn('[AI Client] Request timeout/aborted, seamlessly utilizing pedagogical knowledge engine fallback.');
-      } else {
-        console.warn('[AI Client] Backend request issue, falling back to local engine:', err?.message || err);
+      console.warn('[AI Client] Backend endpoint unavailable, attempting direct fallback:', err?.message || err);
+    }
+
+    // 3. Client-side direct Gemini API fallback if API key is present
+    const clientGeminiKey =
+      (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GEMINI_API_KEY : '') ||
+      multiSettings?.gemini?.apiKey ||
+      '';
+
+    if (clientGeminiKey && clientGeminiKey.trim() && clientGeminiKey !== 'MY_GEMINI_API_KEY') {
+      try {
+        const ai = new GoogleGenAI({
+          apiKey: clientGeminiKey.trim(),
+        });
+
+        const formattedContents = [
+          ...(params.history || []).slice(-6).map(msg => ({
+            role: msg.role === 'assistant' || msg.role === 'model' ? 'model' : 'user',
+            parts: [{ text: msg.text }],
+          })),
+          {
+            role: 'user',
+            parts: [{ text: cleanPrompt }],
+          },
+        ];
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: formattedContents,
+          config: {
+            systemInstruction:
+              params.systemPrompt ||
+              'You are Veda AI, an expert academic tutor on Edu Veda. Provide accurate, clear, and structured answers in Hindi/English for students preparing for competitive exams and academic syllabus.',
+            temperature: 0.5,
+          },
+        });
+
+        const reply = response?.text?.trim();
+        if (reply) {
+          return {
+            success: true,
+            data: { reply } as unknown as T,
+            provider: 'gemini (direct-client)',
+            model: 'gemini-3.8-flash',
+          };
+        }
+      } catch (clientErr) {
+        console.warn('[AI Client] Direct client Gemini fallback failed:', clientErr);
       }
     }
 
-    // 3. Graceful Pedagogical Knowledge Engine Fallback
+    // 4. Graceful Educational Knowledge Engine Fallback
     try {
       const educationalReply = generateVedaAiEducationalResponse(cleanPrompt);
       if (educationalReply) {
@@ -166,11 +197,11 @@ class AIClientService {
       }
     } catch {}
 
-    // 4. Clean error message without exposing backend internals
+    // 5. Clean error message
     return {
       success: false,
       code: 'SERVICE_UNAVAILABLE',
-      message: 'AI service is temporarily unavailable. Please try again later.',
+      message: 'AI service is temporarily busy. Please try again in a moment.',
     };
   }
 }

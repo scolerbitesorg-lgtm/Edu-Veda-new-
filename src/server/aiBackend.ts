@@ -186,12 +186,12 @@ async function executeGeminiServer(
         contents: formattedContents,
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.7,
+          temperature: 0.4,
         },
       });
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Gemini timeout on ${model}`)), 12000)
+        setTimeout(() => reject(new Error(`Gemini timeout on ${model}`)), 8000)
       );
 
       const response = await Promise.race([generatePromise, timeoutPromise]);
