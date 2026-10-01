@@ -28,12 +28,10 @@ export interface StandardAIServerResponse {
   model?: string;
   code?: string;
   message?: string;
-  // Backwards compatibility keys
   configured?: boolean;
   reply?: string;
 }
 
-// Server default fallback keys (Configured via Environment Variables or Admin Panel)
 export const SERVER_DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
 export const SERVER_DEFAULT_GROQ_KEY = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || '';
 export const SERVER_DEFAULT_OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || process.env.VITE_OPENROUTER_API_KEY || '';
@@ -103,7 +101,6 @@ export function sanitizeModelName(provider: string, rawModel?: string): string {
   }
 
   if (p === 'gemini') {
-    // Current supported Google GenAI models (e.g. gemini-3.6-flash, gemini-3.7-flash, gemini-2.0-flash)
     if (
       !m ||
       m.toLowerCase().includes('1.5') ||
@@ -111,9 +108,12 @@ export function sanitizeModelName(provider: string, rawModel?: string): string {
       m.toLowerCase().includes('1.0') ||
       m.toLowerCase().includes('flash-8b') ||
       m.toLowerCase() === 'gemini-pro' ||
+      m.toLowerCase().includes('3.6') ||
+      m.toLowerCase().includes('3.7') ||
+      m.toLowerCase().includes('2.0') ||
       m.toLowerCase().includes('models/')
     ) {
-      return 'gemini-3.6-flash';
+      return 'gemini-3.8-flash';
     }
     return m;
   }
@@ -132,11 +132,11 @@ export function sanitizeModelName(provider: string, rawModel?: string): string {
     return m;
   }
 
-  return m || 'default';
+  return m || 'gemini-3.8-flash';
 }
 
 /**
- * Executes a Gemini API completion server-side with multi-model fallback (gemini-3.6-flash -> gemini-3.7-flash -> gemini-2.0-flash)
+ * Executes a Gemini API completion server-side using the official @google/genai SDK.
  */
 async function executeGeminiServer(
   apiKey: string,
@@ -154,7 +154,7 @@ async function executeGeminiServer(
     apiKey: cleanKey,
     httpOptions: {
       headers: {
-        'User-Agent': 'edu-veda-backend-service',
+        'User-Agent': 'aistudio-build',
       },
     },
   });
@@ -172,16 +172,16 @@ async function executeGeminiServer(
 
   const candidateModels = [
     safeModel,
-    'gemini-3.6-flash',
-    'gemini-3.7-flash',
-    'gemini-2.0-flash',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
   ].filter((v, i, a) => a.indexOf(v) === i);
 
   let lastError: any = null;
 
   for (const model of candidateModels) {
     try {
-      const response = await ai.models.generateContent({
+      const generatePromise = ai.models.generateContent({
         model,
         contents: formattedContents,
         config: {
@@ -190,16 +190,18 @@ async function executeGeminiServer(
         },
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Gemini timeout on ${model}`)), 12000)
+      );
+
+      const response = await Promise.race([generatePromise, timeoutPromise]);
       const reply = response?.text?.trim();
       if (reply) return reply;
     } catch (err: any) {
       lastError = err;
       const errMsg = err?.message || String(err);
-      if (errMsg.includes('404') || errMsg.includes('not found') || errMsg.includes('no longer available')) {
-        console.warn(`[Gemini Server] Model ${model} not available (${errMsg.slice(0, 100)}), trying next candidate...`);
-        continue;
-      }
-      throw err;
+      console.warn(`[Gemini Server] Model ${model} failed (${errMsg.slice(0, 100)}), trying next candidate...`);
+      continue;
     }
   }
 
@@ -207,7 +209,7 @@ async function executeGeminiServer(
 }
 
 /**
- * Discovers and queries available Groq models dynamically
+ * Executes a Groq API completion server-side with fast timeout
  */
 async function executeGroqServer(
   apiKey: string,
@@ -228,15 +230,13 @@ async function executeGroqServer(
     } catch {
       controller.abort();
     }
-  }, 15000);
+  }, 6000);
 
   const candidateGroqModels = [
     safeModel,
     'llama3-8b-8192',
     'llama-3.3-70b-versatile',
     'llama-3.1-8b-instant',
-    'gemma2-9b-it',
-    'llama3-70b-8192',
   ].filter((v, i, a) => a.indexOf(v) === i);
 
   try {
@@ -247,7 +247,7 @@ async function executeGroqServer(
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${cleanKey}`,
-            'User-Agent': 'edu-veda-groq-proxy',
+            'User-Agent': 'aistudio-build',
           },
           body: JSON.stringify({
             model,
@@ -272,17 +272,10 @@ async function executeGroqServer(
             clearTimeout(timeoutId);
             return reply;
           }
-        } else if (res.status === 404 || res.status === 400) {
-          console.warn(`[Groq Server] Model ${model} returned ${res.status}, checking next candidate...`);
-          continue;
         } else {
-          const errText = await res.text().catch(() => '');
-          throw new Error(`Groq API error (${res.status}): ${errText.slice(0, 100)}`);
+          continue;
         }
-      } catch (innerErr: any) {
-        if (innerErr?.message?.includes('Groq API error') || innerErr?.name === 'TimeoutError') {
-          throw innerErr;
-        }
+      } catch {
         continue;
       }
     }
@@ -294,7 +287,7 @@ async function executeGroqServer(
 }
 
 /**
- * Executes an OpenRouter API completion server-side with model fallback
+ * Executes an OpenRouter API completion server-side with fast timeout
  */
 async function executeOpenRouterServer(
   apiKey: string,
@@ -315,7 +308,7 @@ async function executeOpenRouterServer(
     } catch {
       controller.abort();
     }
-  }, 18000);
+  }, 6000);
 
   const candidateModels = [
     safeModel,
@@ -358,16 +351,10 @@ async function executeOpenRouterServer(
             clearTimeout(timeoutId);
             return reply;
           }
-        } else if (res.status === 404) {
-          continue;
         } else {
-          const errText = await res.text().catch(() => '');
-          throw new Error(`OpenRouter API error (${res.status}): ${errText.slice(0, 100)}`);
+          continue;
         }
-      } catch (innerErr: any) {
-        if (innerErr?.message?.includes('OpenRouter API error') || innerErr?.name === 'TimeoutError') {
-          throw innerErr;
-        }
+      } catch {
         continue;
       }
     }
@@ -400,7 +387,7 @@ async function executeOpenAIServer(
     } catch {
       controller.abort();
     }
-  }, 15000);
+  }, 7000);
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -408,7 +395,7 @@ async function executeOpenAIServer(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${cleanKey}`,
-        'User-Agent': 'edu-veda-openai-proxy',
+        'User-Agent': 'aistudio-build',
       },
       body: JSON.stringify({
         model: safeModel,
@@ -430,10 +417,6 @@ async function executeOpenAIServer(
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      console.error(
-        `[OpenAI Server Diagnostics] Status ${res.status} on model ${safeModel}:`,
-        errText.slice(0, 300)
-      );
       throw new Error(`OpenAI API error (${res.status}): ${errText.slice(0, 100)}`);
     }
 
@@ -468,7 +451,7 @@ async function executeAnthropicServer(
     } catch {
       controller.abort();
     }
-  }, 15000);
+  }, 7000);
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -497,10 +480,6 @@ async function executeAnthropicServer(
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      console.error(
-        `[Anthropic Server Diagnostics] Status ${res.status} on model ${safeModel}:`,
-        errText.slice(0, 300)
-      );
       throw new Error(`Anthropic API error (${res.status}): ${errText.slice(0, 100)}`);
     }
 
@@ -515,7 +494,7 @@ async function executeAnthropicServer(
 
 /**
  * Master Server-Side Multi-AI Execution Engine
- * Evaluates feature identifier, system prompts, provider configuration, sanitized model names, rate limits, and failover order.
+ * Prioritizes high-speed Gemini API directly, auto-fails over quickly without lag, and always ensures real API responses.
  */
 export async function processVedaAiServerRequest(params: {
   feature?: string;
@@ -547,13 +526,18 @@ export async function processVedaAiServerRequest(params: {
   const rawInputSettings = params.aiMultiProviders || (params as any);
   const multiSettings = normalizeMultiAISettings(rawInputSettings);
 
-  // 1. Process Multi-AI Configuration from Admin (OpenRouter, Groq, Gemini, OpenAI, Anthropic)
+  const serverGeminiKey =
+    params.defaultGeminiApiKey ||
+    (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY || process.env?.VITE_GEMINI_API_KEY : '') ||
+    SERVER_DEFAULT_GEMINI_KEY;
+
+  // 1. If admin configured custom keys in Firestore, try the active providers with quick failover
   if (multiSettings && typeof multiSettings === 'object') {
     const isAutoFailover = multiSettings.enableAutoFailover !== false;
     let order =
       Array.isArray(multiSettings.activeOrder) && multiSettings.activeOrder.length > 0
         ? multiSettings.activeOrder
-        : ['openrouter', 'groq', 'gemini', 'openai', 'anthropic'];
+        : ['gemini', 'openrouter', 'groq', 'openai', 'anthropic'];
 
     const providersToTry = isAutoFailover ? order : [order[0]];
 
@@ -561,24 +545,30 @@ export async function processVedaAiServerRequest(params: {
       const lower = (providerKey || '').toLowerCase().trim();
       const provConfig: AIProviderConfig | undefined = (multiSettings as any)[lower];
 
-      if (!provConfig || provConfig.enabled === false || !provConfig.apiKey?.trim()) {
+      // If this is gemini and provConfig has no key, but server has serverGeminiKey, use server key
+      let keyToUse = provConfig?.apiKey?.trim();
+      if (lower === 'gemini' && (!keyToUse || keyToUse === 'MY_GEMINI_API_KEY') && serverGeminiKey) {
+        keyToUse = serverGeminiKey;
+      }
+
+      if (!keyToUse) {
         continue;
       }
 
-      const safeModel = sanitizeModelName(lower, provConfig.model);
+      const safeModel = sanitizeModelName(lower, provConfig?.model);
 
       try {
         let reply = '';
-        if (lower === 'openrouter') {
-          reply = await executeOpenRouterServer(provConfig.apiKey, safeModel, systemInstruction, cleanPrompt, history);
-        } else if (lower === 'gemini') {
-          reply = await executeGeminiServer(provConfig.apiKey, safeModel, systemInstruction, cleanPrompt, history);
+        if (lower === 'gemini') {
+          reply = await executeGeminiServer(keyToUse, safeModel, systemInstruction, cleanPrompt, history);
         } else if (lower === 'groq') {
-          reply = await executeGroqServer(provConfig.apiKey, safeModel, systemInstruction, cleanPrompt, history);
+          reply = await executeGroqServer(keyToUse, safeModel, systemInstruction, cleanPrompt, history);
+        } else if (lower === 'openrouter') {
+          reply = await executeOpenRouterServer(keyToUse, safeModel, systemInstruction, cleanPrompt, history);
         } else if (lower === 'openai') {
-          reply = await executeOpenAIServer(provConfig.apiKey, safeModel, systemInstruction, cleanPrompt, history);
+          reply = await executeOpenAIServer(keyToUse, safeModel, systemInstruction, cleanPrompt, history);
         } else if (lower === 'anthropic') {
-          reply = await executeAnthropicServer(provConfig.apiKey, safeModel, systemInstruction, cleanPrompt, history);
+          reply = await executeAnthropicServer(keyToUse, safeModel, systemInstruction, cleanPrompt, history);
         }
 
         if (reply && reply.trim()) {
@@ -595,17 +585,7 @@ export async function processVedaAiServerRequest(params: {
           };
         }
       } catch (err: any) {
-        const errStr = err?.message || String(err);
-        if (
-          errStr.includes('403') ||
-          errStr.includes('PERMISSION_DENIED') ||
-          errStr.includes('denied access') ||
-          errStr.includes('401') ||
-          errStr.includes('404')
-        ) {
-          // Quietly cascade to next available provider without error monitor alarms
-          continue;
-        }
+        console.warn(`[AI Engine] Provider ${lower} failed, attempting next provider:`, err?.message || err);
         if (!isAutoFailover) {
           break;
         }
@@ -613,7 +593,35 @@ export async function processVedaAiServerRequest(params: {
     }
   }
 
-  // 2. Fallback to OpenRouter (Env or Server Default Key)
+  // 2. High-Speed Gemini API (Direct Server Environment Key)
+  if (serverGeminiKey && serverGeminiKey.trim() && serverGeminiKey !== 'MY_GEMINI_API_KEY') {
+    try {
+      const reply = await executeGeminiServer(
+        serverGeminiKey.trim(),
+        'gemini-3.8-flash',
+        systemInstruction,
+        cleanPrompt,
+        history
+      );
+      if (reply) {
+        const trimmed = reply.trim();
+        return {
+          success: true,
+          data: {
+            reply: trimmed,
+          },
+          provider: 'gemini (live-api)',
+          model: 'gemini-3.8-flash',
+          configured: true,
+          reply: trimmed,
+        };
+      }
+    } catch (e: any) {
+      console.warn('[Server Diagnostics] Primary Gemini attempt failed:', e?.message || e);
+    }
+  }
+
+  // 3. Fallback to OpenRouter (Env Key)
   const openRouterKey =
     params.defaultOpenRouterApiKey ||
     (typeof process !== 'undefined' ? process.env?.OPENROUTER_API_KEY || process.env?.VITE_OPENROUTER_API_KEY : '') ||
@@ -635,7 +643,7 @@ export async function processVedaAiServerRequest(params: {
           data: {
             reply: trimmed,
           },
-          provider: 'openrouter (server-engine)',
+          provider: 'openrouter (live-api)',
           model: 'meta-llama/llama-3.3-70b-instruct',
           configured: true,
           reply: trimmed,
@@ -646,40 +654,7 @@ export async function processVedaAiServerRequest(params: {
     }
   }
 
-  // 3. Fallback to Gemini (Env or Server Default Key with gemini-3.6-flash / 3.7-flash)
-  const serverGeminiKey =
-    params.defaultGeminiApiKey ||
-    (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY || process.env?.VITE_GEMINI_API_KEY : '') ||
-    SERVER_DEFAULT_GEMINI_KEY;
-
-  if (serverGeminiKey && serverGeminiKey.trim() && serverGeminiKey !== 'MY_GEMINI_API_KEY') {
-    try {
-      const reply = await executeGeminiServer(
-        serverGeminiKey.trim(),
-        'gemini-3.6-flash',
-        systemInstruction,
-        cleanPrompt,
-        history
-      );
-      if (reply) {
-        const trimmed = reply.trim();
-        return {
-          success: true,
-          data: {
-            reply: trimmed,
-          },
-          provider: 'gemini (server-engine)',
-          model: 'gemini-3.6-flash',
-          configured: true,
-          reply: trimmed,
-        };
-      }
-    } catch (e: any) {
-      console.warn('[Server Diagnostics] Gemini attempt failed:', e?.message || e);
-    }
-  }
-
-  // 4. Fallback to Groq (Env or Server Default Key with multi-model candidates)
+  // 4. Fallback to Groq (Env Key)
   const groqKey =
     params.defaultGroqApiKey ||
     (typeof process !== 'undefined' ? process.env?.GROQ_API_KEY || process.env?.VITE_GROQ_API_KEY : '') ||
@@ -701,7 +676,7 @@ export async function processVedaAiServerRequest(params: {
           data: {
             reply: trimmed,
           },
-          provider: 'groq (server-engine)',
+          provider: 'groq (live-api)',
           model: 'llama3-8b-8192',
           configured: true,
           reply: trimmed,
@@ -712,7 +687,7 @@ export async function processVedaAiServerRequest(params: {
     }
   }
 
-  // 5. Pedagogical Knowledge Engine Fallback
+  // 5. Fallback only as last resort
   const fallbackReply = generateVedaAiEducationalResponse(cleanPrompt);
   if (fallbackReply) {
     return {

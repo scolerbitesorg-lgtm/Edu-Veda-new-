@@ -5,27 +5,24 @@ import {
   FileText,
   CheckSquare,
   ArrowRight,
-  CheckCircle2,
-  Circle,
-  Award,
 } from 'lucide-react';
 import { subscribeToTopicById } from '../services/topics';
 import { subscribeToLecturesByTopic } from '../services/lectures';
 import { subscribeToNotesByTopic } from '../services/notes';
 import { subscribeToMCQsByTopic } from '../services/mcqs';
-import { subscribeToUserProgress } from '../services/progress';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
-import type { Topic, Lecture, Note, MCQ, UserProgress } from '../types';
+import type { Topic, Lecture, Note, MCQ } from '../types';
 
 interface TopicDetailPageProps {
   topicId: string;
   onBack: () => void;
   onOpenMCQs: () => void;
   onOpenNotes: () => void;
+  onOpenDirectNote?: (noteId: string) => void;
   onOpenLectures: () => void;
 }
 
@@ -34,6 +31,7 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
   onBack,
   onOpenMCQs,
   onOpenNotes,
+  onOpenDirectNote,
   onOpenLectures,
 }) => {
   const { user } = useAuth();
@@ -45,7 +43,6 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
   const [mcqs, setMCQs] = useState<MCQ[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error] = useState<string | null>(null);
-  const [progressList, setProgressList] = useState<UserProgress[]>([]);
 
   // Real-time listener for topic and its contents count
   useEffect(() => {
@@ -66,42 +63,13 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
       setMCQs(m || []);
     });
 
-    let unsubProgress = () => {};
-    if (user) {
-      unsubProgress = subscribeToUserProgress(user.uid, list => {
-        setProgressList(list || []);
-      });
-    }
-
     return () => {
       unsubTopic();
       unsubLectures();
       unsubNotes();
       unsubMCQs();
-      unsubProgress();
     };
   }, [topicId, user]);
-
-  // Topic Progress Calculation (60% Video + 40% MCQ)
-  const topicProgressDoc = progressList.find(
-    p => p.topicId === topicId && (!p.lectureId || p.id === `${user?.uid}_${topicId}`)
-  );
-
-  const isVideoDone = Boolean(
-    topicProgressDoc?.videoCompleted ||
-      progressList.some(
-        p => p.topicId === topicId && p.lectureId && (p.completed || p.progress >= 80)
-      )
-  );
-
-  const isMCQDone = Boolean(topicProgressDoc?.mcqCompleted || topicProgressDoc?.completed);
-
-  const computedPercent =
-    topicProgressDoc?.progress !== undefined
-      ? topicProgressDoc.progress
-      : (isVideoDone ? 60 : 0) + (isMCQDone ? 40 : 0);
-
-  const isTopicFullyDone = computedPercent >= 100 || (isVideoDone && isMCQDone);
 
   return (
     <div className="space-y-4 pb-24 max-w-md mx-auto px-4 pt-2 animate-in fade-in duration-100">
@@ -114,7 +82,7 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
               playTap();
               onBack();
             }}
-            className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors active:scale-95 shadow-xs cursor-pointer"
+            className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors active:scale-95 shadow-xs cursor-pointer touch-manipulation"
             aria-label="Back to Subject"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -173,64 +141,6 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
               )}
             </div>
 
-            {/* Live Progress Tracker (60% Video + 40% MCQ) */}
-            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                  <Award className="w-4 h-4 text-indigo-600" />
-                  <span>Lesson Completion</span>
-                </div>
-                <span className="font-extrabold text-indigo-600">
-                  {computedPercent}% {isTopicFullyDone && '🎉 Done'}
-                </span>
-              </div>
-
-              {/* Progress Track Bar */}
-              <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    isTopicFullyDone
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
-                      : 'bg-gradient-to-r from-indigo-500 to-purple-600'
-                  }`}
-                  style={{ width: `${Math.min(100, Math.max(0, computedPercent))}%` }}
-                />
-              </div>
-
-              {/* Breakdown Pills: 60% Video + 40% MCQ */}
-              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
-                <div
-                  className={`flex items-center gap-1.5 p-1.5 rounded-xl border ${
-                    isVideoDone
-                      ? 'bg-emerald-50/80 text-emerald-800 border-emerald-200 font-semibold'
-                      : 'bg-white text-slate-600 border-slate-200'
-                  }`}
-                >
-                  {isVideoDone ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  ) : (
-                    <Circle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  )}
-                  <span className="truncate">Video Lecture (60%)</span>
-                </div>
-
-                <div
-                  className={`flex items-center gap-1.5 p-1.5 rounded-xl border ${
-                    isMCQDone
-                      ? 'bg-emerald-50/80 text-emerald-800 border-emerald-200 font-semibold'
-                      : 'bg-white text-slate-600 border-slate-200'
-                  }`}
-                >
-                  {isMCQDone ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  ) : (
-                    <Circle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  )}
-                  <span className="truncate">Practice MCQs (40%)</span>
-                </div>
-              </div>
-            </div>
-
             {/* Quick Meta Summary Pills */}
             <div className="flex items-center gap-2 pt-2 border-t border-slate-100 flex-wrap">
               <span className="px-2.5 py-1 rounded-xl bg-purple-50 text-purple-700 text-[11px] font-bold border border-purple-100 flex items-center gap-1">
@@ -265,16 +175,9 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
                   <Play className="w-5 h-5 fill-white" />
                 </div>
                 <div className="min-w-0 flex-1 pr-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-purple-700 transition-colors">
-                      Lectures ({lectures.length})
-                    </h3>
-                    {isVideoDone && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
-                        60% Done
-                      </span>
-                    )}
-                  </div>
+                  <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-purple-700 transition-colors">
+                    Lectures ({lectures.length})
+                  </h3>
                   <p className="text-xs text-slate-500 truncate mt-0.5">
                     {lectures.length > 0
                       ? 'Watch video classes & expert lessons'
@@ -296,7 +199,11 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
               type="button"
               onClick={() => {
                 playTap();
-                onOpenNotes();
+                if (notes.length === 1 && onOpenDirectNote) {
+                  onOpenDirectNote(notes[0].id);
+                } else {
+                  onOpenNotes();
+                }
               }}
               className="w-full bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-sky-300 active:scale-[0.98] transition-all cursor-pointer text-left flex items-center justify-between group"
             >
@@ -305,11 +212,9 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
                   <FileText className="w-5 h-5" />
                 </div>
                 <div className="min-w-0 flex-1 pr-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-sky-700 transition-colors">
-                      Notes ({notes.length})
-                    </h3>
-                  </div>
+                  <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-sky-700 transition-colors">
+                    Notes ({notes.length})
+                  </h3>
                   <p className="text-xs text-slate-500 truncate mt-0.5">
                     {notes.length > 0
                       ? 'Read summary notes, points & PDF guides'
@@ -340,16 +245,9 @@ export const TopicDetailPage: React.FC<TopicDetailPageProps> = ({
                   <CheckSquare className="w-5 h-5" />
                 </div>
                 <div className="min-w-0 flex-1 pr-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-emerald-700 transition-colors">
-                      Practice MCQs ({mcqs.length})
-                    </h3>
-                    {isMCQDone && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
-                        40% Done
-                      </span>
-                    )}
-                  </div>
+                  <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-emerald-700 transition-colors">
+                    Practice MCQs ({mcqs.length})
+                  </h3>
                   <p className="text-xs text-slate-500 truncate mt-0.5">
                     {mcqs.length > 0
                       ? 'Objective questions with instant scoring'

@@ -17,10 +17,12 @@ import {
   SkipForward,
   Sliders,
   Check,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { saveMockAttempt } from '../services/attempts';
+import { getExamSourceTag } from '../utils/examTag';
 import type { MockTest, MCQ } from '../types';
 
 interface MockTestViewerProps {
@@ -348,6 +350,7 @@ export const MockTestViewer: React.FC<MockTestViewerProps> = ({
                 const chosen = userAnswers[qKey];
                 const isSkipped = chosen === undefined;
                 const isAnsCorrect = chosen === q.correctAnswer;
+                const examTag = getExamSourceTag(q);
 
                 return (
                   <div
@@ -361,9 +364,19 @@ export const MockTestViewer: React.FC<MockTestViewerProps> = ({
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="font-bold text-slate-800 leading-snug">
-                        Q{idx + 1}. {q.question}
-                      </span>
+                      <div>
+                        <span className="font-bold text-slate-800 leading-snug">
+                          Q{idx + 1}. {q.question}
+                        </span>
+                        {examTag && (
+                          <div className="mt-1.5">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
+                              <Calendar className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span>{examTag}</span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
                       {isSkipped ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 shrink-0">
                           Skipped
@@ -618,9 +631,17 @@ export const MockTestViewer: React.FC<MockTestViewerProps> = ({
       <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-md mb-4">
         {/* Top Indicators */}
         <div className="flex items-center justify-between mb-4">
-          <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs">
-            Question {currentIndex + 1} of {questions.length}
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs">
+              Question {currentIndex + 1} of {questions.length}
+            </span>
+            {getExamSourceTag(currentQ) && (
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
+                <Calendar className="w-3 h-3 text-amber-600 shrink-0" />
+                <span>{getExamSourceTag(currentQ)}</span>
+              </span>
+            )}
+          </div>
 
           <button
             type="button"

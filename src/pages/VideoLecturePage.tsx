@@ -101,7 +101,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
               playTap();
               onBack();
             }}
-            className="w-10 h-10 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition-colors active:scale-95 border border-slate-700 shadow-md cursor-pointer"
+            className="w-10 h-10 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition-colors active:scale-95 border border-slate-700 shadow-md cursor-pointer touch-manipulation"
             aria-label="Back to Lessons"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -193,7 +193,7 @@ export const VideoLecturePage: React.FC<VideoLecturePageProps> = ({
                   className="flex items-center gap-1.5 text-xs font-bold text-indigo-300 bg-indigo-950 hover:bg-indigo-900 px-3.5 py-1.5 rounded-full border border-indigo-700/60 shrink-0 transition-colors cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4 text-indigo-400" />
-                  <span>{progress > 0 ? `${progress}% · Mark Done` : 'Mark Done'}</span>
+                  <span>Mark Done</span>
                 </button>
               )}
             </div>

@@ -66,9 +66,13 @@ export const PYQsPage: React.FC<PYQsPageProps> = ({ onBack, onOpenPdf }) => {
               type="button"
               onClick={() => {
                 playTap();
-                onBack();
+                if (selectedExam) {
+                  setSelectedExam(null);
+                } else {
+                  onBack();
+                }
               }}
-              className="p-1.5 -ml-1 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+              className="p-2 -ml-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 touch-manipulation cursor-pointer active:scale-95 transition-all"
               aria-label="Go back"
             >
               <ArrowLeft className="w-5 h-5" />

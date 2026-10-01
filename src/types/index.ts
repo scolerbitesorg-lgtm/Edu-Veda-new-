@@ -35,7 +35,7 @@ export interface Banner {
   buttonText?: string;
   buttonUrl?: string;
   buttonVisible?: boolean;
-  actionType?: 'link' | 'test' | 'subject' | 'ai' | 'notes' | 'pyq';
+  actionType?: 'link' | 'test' | 'subject' | 'topic' | 'ai' | 'notes' | 'pyq' | 'pyqs' | 'subjects' | 'categories' | string;
   actionTargetId?: string;
   order?: number;
   published?: boolean;
@@ -227,6 +227,12 @@ export interface MCQ {
   correctAnswer: number; // 0, 1, 2, or 3
   explanation?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
+  examTag?: string; // e.g. "SSC CGL Mains 2018", "UPSC 2021"
+  askedIn?: string;
+  exam?: string;
+  year?: number | string;
+  shift?: string;
+  examSource?: string;
   status?: string;
   published: boolean;
   createdAt?: string;

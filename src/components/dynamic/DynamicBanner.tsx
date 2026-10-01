@@ -76,11 +76,11 @@ export const DynamicBanner: React.FC<DynamicBannerProps> = ({ banners, onAction 
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className="relative w-full overflow-hidden rounded-3xl shadow-sm border border-slate-200/80 bg-gradient-to-br from-indigo-900 via-indigo-800 to-indigo-950 text-white select-none cursor-pointer group active:scale-[0.99] transition-all"
+      className="relative w-full overflow-hidden rounded-3xl shadow-sm border border-slate-200/80 bg-gradient-to-br from-indigo-900 via-indigo-800 to-indigo-950 text-white select-none cursor-pointer group active:scale-[0.99] transition-all touch-manipulation"
     >
       {/* Background Graphic or Admin Uploaded Poster Image */}
       {current.image ? (
-        <div className={`absolute inset-0 z-0 ${isFullImageBanner ? 'opacity-100' : 'opacity-30 group-hover:opacity-40'} transition-opacity`}>
+        <div className={`absolute inset-0 z-0 ${isFullImageBanner ? 'opacity-100' : 'opacity-35 group-hover:opacity-45'} transition-opacity`}>
           <img
             src={current.image}
             alt={current.title || 'Edu Veda Banner'}
@@ -92,7 +92,7 @@ export const DynamicBanner: React.FC<DynamicBannerProps> = ({ banners, onAction 
             }}
           />
           {!isFullImageBanner && (
-            <div className="absolute inset-0 bg-gradient-to-t from-indigo-950/90 via-indigo-950/40 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-indigo-950/95 via-indigo-950/50 to-indigo-900/30" />
           )}
         </div>
       ) : (
@@ -103,22 +103,26 @@ export const DynamicBanner: React.FC<DynamicBannerProps> = ({ banners, onAction 
       )}
 
       {/* Foreground Content */}
-      <div className="relative z-10 p-4.5 sm:p-6 flex flex-col justify-between min-h-[145px]">
+      <div className={`relative z-10 p-4.5 sm:p-6 flex flex-col justify-between ${isFullImageBanner ? 'min-h-[140px] sm:min-h-[160px]' : 'min-h-[145px]'}`}>
         <div>
           {/* Tag or Badge */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/15 backdrop-blur-md text-[11px] font-bold tracking-wide text-amber-300 uppercase shadow-2xs">
-              <Sparkles className="w-3 h-3" />
-              <span>{current.badge || current.tag || 'Featured'}</span>
-            </div>
+          {(current.badge || current.tag || current.buttonUrl?.startsWith('http')) && (
+            <div className="flex items-center justify-between mb-2">
+              {(current.badge || current.tag) && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/15 backdrop-blur-md text-[11px] font-bold tracking-wide text-amber-300 uppercase shadow-2xs">
+                  <Sparkles className="w-3 h-3" />
+                  <span>{current.badge || current.tag}</span>
+                </div>
+              )}
 
-            {/* Quick External Link indicator if external URL */}
-            {current.buttonUrl?.startsWith('http') && (
-              <span className="text-white/60 hover:text-white transition-colors">
-                <ExternalLink className="w-3.5 h-3.5" />
-              </span>
-            )}
-          </div>
+              {/* Quick External Link indicator if external URL */}
+              {current.buttonUrl?.startsWith('http') && (
+                <span className="text-white/70 hover:text-white transition-colors ml-auto">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Title */}
           {current.title && (
@@ -137,7 +141,7 @@ export const DynamicBanner: React.FC<DynamicBannerProps> = ({ banners, onAction 
 
         {/* Bottom CTA Row & Carousel Navigation */}
         <div className="mt-3.5 flex items-center justify-between gap-2">
-          {current.buttonVisible !== false && (
+          {current.buttonVisible !== false && (current.buttonText || !isFullImageBanner) && (
             <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-indigo-950 text-xs font-bold shadow-sm group-hover:bg-amber-300 transition-colors">
               <span>{current.buttonText || 'Explore Now'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -146,12 +150,12 @@ export const DynamicBanner: React.FC<DynamicBannerProps> = ({ banners, onAction 
 
           {/* Multi-banner navigation & Dots pagination */}
           {activeBanners.length > 1 && (
-            <div className="flex items-center gap-1.5 ml-auto bg-black/20 backdrop-blur-md px-2 py-1 rounded-full">
+            <div className="flex items-center gap-1.5 ml-auto bg-black/30 backdrop-blur-md px-2 py-1 rounded-full">
               <button
                 type="button"
                 aria-label="Previous banner"
                 onClick={handlePrev}
-                className="w-5 h-5 rounded-full hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+                className="w-5 h-5 rounded-full hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
@@ -161,13 +165,13 @@ export const DynamicBanner: React.FC<DynamicBannerProps> = ({ banners, onAction 
                   <button
                     key={idx}
                     type="button"
-                    aria-label={`Go to slide ${idx + 1}`}
-                    onClick={e => {
+                    onClick={(e) => {
                       e.stopPropagation();
+                      playTap();
                       setCurrentIndex(idx);
                     }}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
-                      currentIndex === idx ? 'w-4 bg-white' : 'w-1.5 bg-white/40'
+                    className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                      idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/40'
                     }`}
                   />
                 ))}
@@ -177,7 +181,7 @@ export const DynamicBanner: React.FC<DynamicBannerProps> = ({ banners, onAction 
                 type="button"
                 aria-label="Next banner"
                 onClick={handleNext}
-                className="w-5 h-5 rounded-full hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+                className="w-5 h-5 rounded-full hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors cursor-pointer"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>

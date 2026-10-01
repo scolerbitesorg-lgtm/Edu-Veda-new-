@@ -2,7 +2,7 @@ import React from 'react';
 import type { Subject } from '../../types';
 import { useAudio } from '../../context/AudioContext';
 import { SubjectIcon3D } from './SubjectIcon3D';
-import { BookOpen, Layers } from 'lucide-react';
+import { BookOpen, ChevronRight } from 'lucide-react';
 
 interface DynamicSubjectProps {
   subject: Subject;
@@ -10,7 +10,6 @@ interface DynamicSubjectProps {
   onClick?: (subject: Subject) => void;
   layout?: 'grid' | 'list';
   lessonCount?: number;
-  mcqCount?: number;
 }
 
 function getHindiNameFallback(englishName: string): string | null {
@@ -47,7 +46,6 @@ export const DynamicSubject: React.FC<DynamicSubjectProps> = ({
   index = 1,
   onClick,
   lessonCount,
-  mcqCount,
 }) => {
   const { playTap } = useAudio();
 
@@ -88,31 +86,16 @@ export const DynamicSubject: React.FC<DynamicSubjectProps> = ({
     subject.description ||
     'सम्पूर्ण पाठ्यक्रम, वीडियो लेक्चर्स एवं वस्तुनिष्ठ प्रश्न।';
 
-  // MCQ count
-  const actualMCQs =
-    mcqCount !== undefined
-      ? mcqCount
-      : subject.mcqCount !== undefined
-      ? subject.mcqCount
-      : index === 1 ? 5 : index === 2 ? 4 : 5;
-
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={handleClick}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleClick();
-        }
-      }}
-      className="w-full bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-slate-300 transition-all active:scale-[0.99] cursor-pointer select-none text-left"
+      className="w-full bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-slate-300 transition-all active:scale-[0.99] cursor-pointer select-none text-left block group"
     >
       {/* Top Header: Icon + Badges + Title */}
       <div className="flex items-start gap-3 sm:gap-4">
         {/* 3D Illustrated Icon in Rounded Square Frame */}
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-50/80 border border-slate-200/70 shadow-2xs flex items-center justify-center shrink-0 overflow-hidden">
+        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-50/80 border border-slate-200/70 shadow-2xs flex items-center justify-center shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
           <SubjectIcon3D subject={subject} index={index} className="w-10 h-10 sm:w-12 sm:h-12" />
         </div>
 
@@ -131,7 +114,7 @@ export const DynamicSubject: React.FC<DynamicSubjectProps> = ({
           </div>
 
           {/* Subject Title */}
-          <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-snug">
+          <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-snug group-hover:text-indigo-600 transition-colors">
             {displayTitle}
           </h3>
         </div>
@@ -142,34 +125,22 @@ export const DynamicSubject: React.FC<DynamicSubjectProps> = ({
         {description}
       </p>
 
-      {/* Divider with Metadata Info */}
+      {/* Divider with Metadata Info - No MCQs on Subject level */}
       <div className="border-t border-slate-100 mt-3.5 pt-3 flex items-center justify-between text-xs sm:text-sm font-semibold">
         {/* Left: Lessons Count */}
         <div className="flex items-center gap-1.5 text-indigo-700 font-semibold">
           <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
           <span>
-            {actualLessons} {actualLessons === 1 ? 'Lesson' : 'Lessons'}
+            {actualLessons} {actualLessons === 1 ? 'Lesson' : 'Lessons'} Syllabus
           </span>
         </div>
 
-        {/* Right: MCQs count */}
-        <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
-          <svg
-            className="w-4 h-4 text-emerald-600 shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="m12 2 10 5-10 5-10-5Z" />
-            <path d="m2 12 10 5 10-5" />
-            <path d="m2 17 10 5 10-5" />
-          </svg>
-          <span>{actualMCQs} MCQs</span>
+        {/* Right: Open Subject Indicator */}
+        <div className="flex items-center gap-1 text-slate-500 font-medium text-xs group-hover:text-indigo-600 transition-colors">
+          <span>Open Folder</span>
+          <ChevronRight className="w-3.5 h-3.5" />
         </div>
       </div>
-    </div>
+    </button>
   );
 };

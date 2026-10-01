@@ -264,15 +264,26 @@ export interface CalculatedStudyStats {
   totalTopicsCount: number;
   completedLecturesCount: number;
   totalLecturesCount: number;
+  completedMCQsCount: number;
+  totalMCQsCount: number;
+  studyStreakDays: number;
+  subjectBreakdown: Array<{
+    subjectId: string;
+    percentage: number;
+    completedTopics: number;
+    totalTopics: number;
+  }>;
 }
 
 /**
- * Computes study statistics across all topics and lectures using the 60% Video + 40% MCQ rule.
+ * Computes study statistics across all topics, subjects, lectures and MCQs using the 60% Video + 40% MCQ rule.
  */
 export function computeStudyStats(
   progressList: UserProgress[],
   totalTopics: Topic[],
-  totalLectures: Lecture[]
+  totalLectures: Lecture[],
+  totalSubjects: { id: string; name: string }[] = [],
+  totalMCQsCount: number = 0
 ): CalculatedStudyStats {
   const totalTopicsCount = Math.max(1, totalTopics.length);
   const totalLecturesCount = Math.max(1, totalLectures.length);
@@ -285,7 +296,10 @@ export function computeStudyStats(
   );
 
   let completedTopicsCount = 0;
+  let completedMCQsCount = 0;
   let accumulatedProgress = 0;
+
+  const topicProgressMap = new Map<string, number>();
 
   totalTopics.forEach(topic => {
     const topicProgressDoc = progressList.find(
@@ -298,7 +312,10 @@ export function computeStudyStats(
         l => l.topicId === topic.id && completedLectureIds.has(l.id)
       );
 
-    const hasDoneMCQ = topicProgressDoc?.mcqCompleted || topicProgressDoc?.completed;
+    const hasDoneMCQ = Boolean(topicProgressDoc?.mcqCompleted || topicProgressDoc?.completed);
+    if (hasDoneMCQ) {
+      completedMCQsCount++;
+    }
 
     let topicPercent = 0;
     if (topicProgressDoc?.progress !== undefined && topicProgressDoc.progress > 0) {
@@ -312,6 +329,7 @@ export function computeStudyStats(
       topicPercent = 100;
     }
 
+    topicProgressMap.set(topic.id, topicPercent);
     accumulatedProgress += topicPercent;
   });
 
@@ -320,6 +338,58 @@ export function computeStudyStats(
     100,
     Math.round(accumulatedProgress / totalTopicsCount)
   );
+
+  // Calculate subject breakdown
+  const subjectBreakdown = totalSubjects.map(sub => {
+    const subTopics = totalTopics.filter(t => t.subjectId === sub.id);
+    if (subTopics.length === 0) {
+      return { subjectId: sub.id, percentage: 0, completedTopics: 0, totalTopics: 0 };
+    }
+    let subAccum = 0;
+    let subCompleted = 0;
+    subTopics.forEach(t => {
+      const p = topicProgressMap.get(t.id) || 0;
+      subAccum += p;
+      if (p >= 100) subCompleted++;
+    });
+    return {
+      subjectId: sub.id,
+      percentage: Math.min(100, Math.round(subAccum / subTopics.length)),
+      completedTopics: subCompleted,
+      totalTopics: subTopics.length,
+    };
+  });
+
+  // Calculate real streak from activity timestamps
+  let studyStreakDays = 0;
+  if (progressList.length > 0) {
+    const activeDates = new Set(
+      progressList
+        .map(p => (p.updatedAt ? p.updatedAt.split('T')[0] : ''))
+        .filter(Boolean)
+    );
+    const today = new Date();
+    let curr = new Date(today);
+    while (true) {
+      const dateStr = curr.toISOString().split('T')[0];
+      if (activeDates.has(dateStr)) {
+        studyStreakDays++;
+        curr.setDate(curr.getDate() - 1);
+      } else {
+        // Allow streak if today hasn't been done yet but yesterday was done
+        if (studyStreakDays === 0) {
+          curr.setDate(curr.getDate() - 1);
+          const yestStr = curr.toISOString().split('T')[0];
+          if (activeDates.has(yestStr)) {
+            studyStreakDays = 1;
+            curr.setDate(curr.getDate() - 1);
+            continue;
+          }
+        }
+        break;
+      }
+    }
+  }
 
   return {
     overallPercentage: Math.max(
@@ -332,5 +402,9 @@ export function computeStudyStats(
     totalTopicsCount,
     completedLecturesCount,
     totalLecturesCount,
+    completedMCQsCount,
+    totalMCQsCount: totalMCQsCount || totalTopicsCount,
+    studyStreakDays: Math.max(progressList.length > 0 ? 1 : 0, studyStreakDays),
+    subjectBreakdown,
   };
 }

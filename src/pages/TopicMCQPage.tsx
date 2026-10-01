@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
-  Sparkles,
   ArrowRight,
   ArrowLeft,
   SkipForward,
@@ -16,18 +15,18 @@ import {
   Grid,
   ListFilter,
   Check,
-  Loader2,
+  Calendar,
 } from 'lucide-react';
 import { subscribeToMCQsByTopic } from '../services/mcqs';
 import { subscribeToTopicById } from '../services/topics';
 import { saveMCQAttempt } from '../services/attempts';
 import { saveTopicMCQCompletion } from '../services/progress';
 import { isQuestionBookmarked, toggleBookmarkQuestion } from '../services/bookmarks';
-import { getMCQExplanation } from '../services/ai';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
+import { getExamSourceTag } from '../utils/examTag';
 import type { MCQ, Topic } from '../types';
 
 interface TopicMCQPageProps {
@@ -49,32 +48,6 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [showAnalysis, setShowAnalysis] = useState<boolean>(false);
   const [showQuestionPalette, setShowQuestionPalette] = useState<boolean>(false);
-  const [aiExplanations, setAiExplanations] = useState<Record<number, string>>({});
-  const [loadingAiExp, setLoadingAiExp] = useState<Record<number, boolean>>({});
-
-  const handleFetchAiExplanation = async (qIdx: number) => {
-    const q = mcqs[qIdx];
-    if (!q || aiExplanations[qIdx]) return;
-    playTap();
-    setLoadingAiExp(prev => ({ ...prev, [qIdx]: true }));
-    try {
-      const exp = await getMCQExplanation({
-        question: q.question,
-        options: q.options,
-        correctAnswer: q.correctAnswer,
-        selectedAnswer: selectedAnswers[qIdx],
-        topic: topic?.title,
-      });
-      setAiExplanations(prev => ({ ...prev, [qIdx]: exp }));
-    } catch {
-      setAiExplanations(prev => ({
-        ...prev,
-        [qIdx]: 'Concept summary: Please review the core principles and textbook notes for this topic.',
-      }));
-    } finally {
-      setLoadingAiExp(prev => ({ ...prev, [qIdx]: false }));
-    }
-  };
 
   // Subscribe to Topic details and MCQs
   useEffect(() => {
@@ -248,7 +221,7 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
             <button
               type="button"
               onClick={onBack}
-              className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors active:scale-95"
+              className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors active:scale-95 touch-manipulation cursor-pointer"
               aria-label="Back to Study Unit"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -340,6 +313,7 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
               {mcqs.map((q, qIndex) => {
                 const userAns = selectedAnswers[qIndex];
                 const isAnsCorrect = userAns === q.correctAnswer;
+                const examTag = getExamSourceTag(q);
                 return (
                   <div
                     key={q.id || qIndex}
@@ -352,9 +326,19 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="font-bold text-slate-900 text-sm leading-snug">
-                        Q{qIndex + 1}. {q.question}
-                      </span>
+                      <div>
+                        <span className="font-bold text-slate-900 text-sm leading-snug">
+                          Q{qIndex + 1}. {q.question}
+                        </span>
+                        {examTag && (
+                          <div className="mt-1.5">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
+                              <Calendar className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span>{examTag}</span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
                       {userAns !== undefined ? (
                         isAnsCorrect ? (
                           <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] shrink-0 flex items-center gap-1">
@@ -431,9 +415,8 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
           <button
             type="button"
             onClick={onBack}
-            className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors active:scale-95 shrink-0"
+            className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors active:scale-95 shrink-0 touch-manipulation cursor-pointer"
             aria-label="Back to Study Unit"
-            title="Back to Study Unit"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
@@ -531,9 +514,17 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
         <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs">
           {/* Question Meta Label */}
           <div className="flex items-center justify-between mb-3 text-xs font-bold text-slate-500">
-            <span className="text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full text-[11px] font-extrabold uppercase">
-              Question {currentIndex + 1} of {mcqs.length}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full text-[11px] font-extrabold uppercase">
+                Question {currentIndex + 1} of {mcqs.length}
+              </span>
+              {getExamSourceTag(currentMCQ) && (
+                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
+                  <Calendar className="w-3 h-3 text-amber-600 shrink-0" />
+                  <span>{getExamSourceTag(currentMCQ)}</span>
+                </span>
+              )}
+            </div>
 
             {user && (
               <button
@@ -626,26 +617,13 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
                   : 'bg-rose-50/80 border-rose-200 text-rose-950'
               }`}
             >
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="flex items-center gap-1.5 font-extrabold">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>{isCorrect ? 'Correct Answer!' : 'Incorrect Answer'}</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleFetchAiExplanation(currentIndex)}
-                  disabled={loadingAiExp[currentIndex]}
-                  className="px-2.5 py-1 rounded-xl bg-white/80 hover:bg-white text-indigo-700 font-bold border border-indigo-200/60 flex items-center gap-1 active:scale-95 transition-all shadow-2xs cursor-pointer"
-                  title="Detailed AI Explanation"
-                >
-                  {loadingAiExp[currentIndex] ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
-                  ) : (
-                    <Sparkles className="w-3 h-3 text-indigo-600" />
-                  )}
-                  <span>{aiExplanations[currentIndex] ? 'AI Detailed' : 'Ask AI Tutor'}</span>
-                </button>
+              <div className="flex items-center gap-1.5 font-extrabold mb-1">
+                {isCorrect ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-600" />
+                )}
+                <span>{isCorrect ? 'Correct Answer!' : 'Incorrect Answer'}</span>
               </div>
 
               {currentMCQ.explanation ? (
@@ -656,18 +634,6 @@ export const TopicMCQPage: React.FC<TopicMCQPageProps> = ({ topicId, onBack }) =
                 <p className="mt-1 text-slate-600 font-normal">
                   Correct Answer: <b>Option {optionLetters[currentMCQ.correctAnswer]}</b>
                 </p>
-              )}
-
-              {/* Dynamic AI Explanation Box */}
-              {aiExplanations[currentIndex] && (
-                <div className="mt-3 pt-2.5 border-t border-indigo-200/50 text-indigo-950 bg-white/60 p-2.5 rounded-xl animate-in fade-in duration-150">
-                  <span className="font-bold text-[11px] text-indigo-700 block mb-1">
-                    💡 AI Tutor Breakdown:
-                  </span>
-                  <div className="whitespace-pre-wrap leading-relaxed font-normal">
-                    {aiExplanations[currentIndex]}
-                  </div>
-                </div>
               )}
             </div>
           )}

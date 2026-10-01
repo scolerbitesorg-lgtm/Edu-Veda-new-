@@ -85,6 +85,49 @@ export async function fetchLecturesByTopic(topicId: string): Promise<Lecture[]> 
   }
 }
 
+export function subscribeToAllPublishedLectures(
+  callback: (lectures: Lecture[]) => void
+): () => void {
+  try {
+    const q = query(collection(db, 'lectures'));
+    const unsubscribe = onSnapshot(
+      q,
+      snapshot => {
+        const list: Lecture[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as any;
+          if (data.published !== false) {
+            list.push({
+              id: docSnap.id,
+              subjectId: data.subjectId || '',
+              topicId: data.topicId || '',
+              title: data.title || 'Video Lecture',
+              description: data.description,
+              storagePath: data.storagePath || data.videoUrl || '',
+              videoUrl: data.videoUrl,
+              thumbnail: data.thumbnail,
+              duration: data.duration,
+              order: data.order ?? 0,
+              published: data.published ?? true,
+              ...data,
+            });
+          }
+        });
+        list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        callback(list);
+      },
+      error => {
+        console.warn('Notice subscribing to all lectures:', error);
+        callback([]);
+      }
+    );
+    return unsubscribe;
+  } catch {
+    callback([]);
+    return () => {};
+  }
+}
+
 export async function fetchAllPublishedLectures(): Promise<Lecture[]> {
   try {
     const q = query(collection(db, 'lectures'));

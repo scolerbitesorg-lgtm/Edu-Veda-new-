@@ -111,7 +111,7 @@ export function normalizeMultiAISettings(rawConfig: any): MultiAISettings {
     'gemini',
     ['geminiApiKey', 'geminiKey', 'gemini_api_key', 'gemini_key', 'geminiAdminKey'],
     ['geminiModel', 'gemini_model'],
-    'gemini-3.6-flash'
+    'gemini-3.8-flash'
   );
 
   let openai = extractProvider(

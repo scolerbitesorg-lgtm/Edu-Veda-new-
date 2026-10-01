@@ -105,11 +105,6 @@ export const LectureCard: React.FC<LectureCardProps> = ({
               <Clock className="w-3 h-3 text-slate-400" />
               {formatDuration(lecture.duration)}
             </span>
-            {progressPercent > 0 && (
-              <span className="text-indigo-600 font-medium">
-                {progressPercent}% watched
-              </span>
-            )}
           </div>
         </div>
       </div>

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Check, X, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, X, HelpCircle, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
 import type { MCQ } from '../../types';
 import { useAudio } from '../../context/AudioContext';
+import { getExamSourceTag } from '../../utils/examTag';
 
 interface DynamicMCQProps {
   mcq: MCQ;
@@ -22,6 +23,8 @@ export const DynamicMCQ: React.FC<DynamicMCQProps> = ({
 }) => {
   const { playTap, playSuccess, playWrong } = useAudio();
   const [showExplanation, setShowExplanation] = React.useState(false);
+
+  const examTag = getExamSourceTag(mcq);
 
   const options = Array.isArray(mcq.options) && mcq.options.length > 0
     ? mcq.options
@@ -53,8 +56,8 @@ export const DynamicMCQ: React.FC<DynamicMCQProps> = ({
   return (
     <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs mb-4">
       {/* Header Info */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
           {index !== undefined && (
             <span className="text-xs font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
               Q{index + 1}
@@ -67,6 +70,14 @@ export const DynamicMCQ: React.FC<DynamicMCQProps> = ({
             </span>
           )}
         </div>
+
+        {/* Exam Source Tag Badge (e.g. Cgl, mains 2018 / UPSC 2021) */}
+        {examTag && (
+          <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
+            <Calendar className="w-3 h-3 text-amber-600 shrink-0" />
+            <span>{examTag}</span>
+          </span>
+        )}
       </div>
 
       {/* Question Text */}

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { SearchBar } from '../components/SearchBar';
 import { DynamicSubject } from '../components/dynamic/DynamicSubject';
+import { DynamicBanner } from '../components/dynamic/DynamicBanner';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 
@@ -11,8 +12,9 @@ import { subscribeToAppSettings, defaultSettings } from '../services/settings';
 import { subscribeToPublishedSubjects } from '../services/subjects';
 import { subscribeToAllPublishedTopics } from '../services/topics';
 import { subscribeToAllPublishedMCQs } from '../services/mcqs';
+import { subscribeToBanners } from '../services/banners';
 
-import type { Subject, Topic, MCQ, AppSettings } from '../types';
+import type { Subject, Topic, MCQ, AppSettings, Banner } from '../types';
 
 interface HomePageProps {
   onSelectSubject: (subjectId: string) => void;
@@ -36,6 +38,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const { playTap } = useAudio();
 
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [banners, setBanners] = useState<Banner[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [mcqs, setMcqs] = useState<MCQ[]>([]);
@@ -49,7 +52,15 @@ export const HomePage: React.FC<HomePageProps> = ({
     return () => unsub();
   }, []);
 
-  // 2. Real-time Subjects listener
+  // 2. Real-time Banners listener
+  useEffect(() => {
+    const unsub = subscribeToBanners(data => {
+      setBanners(data || []);
+    }, settings);
+    return () => unsub();
+  }, [settings]);
+
+  // 3. Real-time Subjects listener
   useEffect(() => {
     const unsub = subscribeToPublishedSubjects(data => {
       setSubjects(data || []);
@@ -58,7 +69,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     return () => unsub();
   }, []);
 
-  // 3. Real-time Topics (Lessons) listener to count exact topics per subject
+  // 4. Real-time Topics (Lessons) listener to count exact topics per subject
   useEffect(() => {
     const unsub = subscribeToAllPublishedTopics(data => {
       setTopics(data || []);
@@ -66,7 +77,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     return () => unsub();
   }, []);
 
-  // 4. Real-time MCQs listener
+  // 5. Real-time MCQs listener
   useEffect(() => {
     const unsub = subscribeToAllPublishedMCQs(data => {
       setMcqs(data || []);
@@ -84,6 +95,38 @@ export const HomePage: React.FC<HomePageProps> = ({
   const welcomeSubtext =
     settings.welcomeSubtext ||
     'Select a subject to open syllabus, video lectures, and notes.';
+
+  const handleBannerAction = (banner: Banner) => {
+    playTap();
+    if (banner.actionTargetId) {
+      if (banner.actionType === 'topic' && onSelectTopic) {
+        onSelectTopic(banner.actionTargetId);
+        return;
+      }
+      onSelectSubject(banner.actionTargetId);
+      return;
+    }
+
+    const url = banner.buttonUrl || banner.url || banner.link || '';
+    if (url.startsWith('http')) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (banner.actionType === 'test' || url.includes('test')) {
+      onNavigatePage?.('test');
+    } else if (banner.actionType === 'notes' || url.includes('notes')) {
+      onNavigatePage?.('notes');
+    } else if (banner.actionType === 'pyqs' || url.includes('pyqs')) {
+      onNavigatePage?.('pyqs');
+    } else if (banner.actionType === 'ai' || url.includes('ai')) {
+      onNavigatePage?.('ai');
+    } else if (banner.actionType === 'subjects' || url.includes('subjects')) {
+      onNavigatePage?.('subjects');
+    } else if (subjects.length > 0) {
+      onSelectSubject(subjects[0].id);
+    }
+  };
 
   return (
     <div className="space-y-4 pb-24 max-w-md mx-auto px-4 pt-3">
@@ -105,7 +148,14 @@ export const HomePage: React.FC<HomePageProps> = ({
         <SearchBar onSelectResult={onSelectResult} />
       </div>
 
-      {/* 3. Academic Subjects Section */}
+      {/* 3. Hero Banner Carousel / Promotional Banner */}
+      {banners.length > 0 && (
+        <div className="pt-1">
+          <DynamicBanner banners={banners} onAction={handleBannerAction} />
+        </div>
+      )}
+
+      {/* 4. Academic Subjects Section */}
       <div className="pt-2">
         <div className="flex items-center justify-between mb-3 px-1">
           <div>
@@ -154,27 +204,12 @@ export const HomePage: React.FC<HomePageProps> = ({
                   ? sub.lessonCount
                   : 0;
 
-              // Real-time calculation of MCQs for this subject
-              const matchedMCQs = mcqs.filter(
-                m =>
-                  m.subjectId === sub.id ||
-                  m.subject === sub.id ||
-                  matchedTopics.some(t => t.id === m.topicId || t.id === m.chapter)
-              );
-              const calculatedMCQs =
-                matchedMCQs.length > 0
-                  ? matchedMCQs.length
-                  : sub.mcqCount !== undefined
-                  ? sub.mcqCount
-                  : idx === 0 ? 5 : idx === 1 ? 4 : 5;
-
               return (
                 <DynamicSubject
                   key={sub.id}
                   subject={sub}
                   index={idx + 1}
                   lessonCount={calculatedLessons}
-                  mcqCount={calculatedMCQs}
                   onClick={() => {
                     playTap();
                     onSelectSubject(sub.id);
@@ -188,3 +223,4 @@ export const HomePage: React.FC<HomePageProps> = ({
     </div>
   );
 };
+

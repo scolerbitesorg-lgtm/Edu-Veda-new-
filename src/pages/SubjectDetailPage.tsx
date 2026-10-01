@@ -6,10 +6,12 @@ import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
 import { subscribeToSubjectById } from '../services/subjects';
 import { subscribeToTopicsBySubject } from '../services/topics';
-import { subscribeToUserProgress } from '../services/progress';
+import { subscribeToAllPublishedMCQs } from '../services/mcqs';
+import { subscribeToAllPublishedLectures } from '../services/lectures';
+import { subscribeToAllNotes } from '../services/notes';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
-import type { Subject, Topic, UserProgress } from '../types';
+import type { Subject, Topic, MCQ, Lecture, Note } from '../types';
 
 interface SubjectDetailPageProps {
   subjectId: string;
@@ -27,7 +29,9 @@ export const SubjectDetailPage: React.FC<SubjectDetailPageProps> = ({
 
   const [subject, setSubject] = useState<Subject | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [progressList, setProgressList] = useState<UserProgress[]>([]);
+  const [allMCQs, setAllMCQs] = useState<MCQ[]>([]);
+  const [allLectures, setAllLectures] = useState<Lecture[]>([]);
+  const [allNotes, setAllNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error] = useState<string | null>(null);
 
@@ -42,31 +46,26 @@ export const SubjectDetailPage: React.FC<SubjectDetailPageProps> = ({
       setTopics(t || []);
     });
 
-    let unsubProgress = () => {};
-    if (user) {
-      unsubProgress = subscribeToUserProgress(user.uid, list => {
-        if (list) setProgressList(list);
-      });
-    }
+    const unsubMCQs = subscribeToAllPublishedMCQs(mcqs => {
+      setAllMCQs(mcqs || []);
+    });
+
+    const unsubLectures = subscribeToAllPublishedLectures(lecs => {
+      setAllLectures(lecs || []);
+    });
+
+    const unsubNotes = subscribeToAllNotes(notes => {
+      setAllNotes(notes || []);
+    });
 
     return () => {
       unsubSubject();
       unsubTopics();
-      unsubProgress();
+      unsubMCQs();
+      unsubLectures();
+      unsubNotes();
     };
   }, [subjectId, user]);
-
-  const getTopicProgress = (topicId: string): number => {
-    const direct = progressList.find(p => p.topicId === topicId && !p.lectureId);
-    if (direct?.progress !== undefined && direct.progress > 0) return direct.progress;
-    const hasVideo =
-      direct?.videoCompleted ||
-      progressList.some(
-        p => p.topicId === topicId && p.lectureId && (p.completed || p.progress >= 80)
-      );
-    const hasMCQ = Boolean(direct?.mcqCompleted || direct?.completed);
-    return Math.min(100, (hasVideo ? 60 : 0) + (hasMCQ ? 40 : 0));
-  };
 
   return (
     <div className="space-y-4 pb-24 max-w-md mx-auto px-4 pt-2 animate-in fade-in duration-100">
@@ -78,7 +77,7 @@ export const SubjectDetailPage: React.FC<SubjectDetailPageProps> = ({
             playTap();
             onBack();
           }}
-          className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors active:scale-95 shadow-xs"
+          className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors active:scale-95 shadow-xs cursor-pointer touch-manipulation"
           aria-label="Back"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -150,14 +149,31 @@ export const SubjectDetailPage: React.FC<SubjectDetailPageProps> = ({
               />
             ) : (
               topics.map((topic, index) => {
-                const topicProgress = getTopicProgress(topic.id);
+                // Real-time calculation of MCQs for this specific topic
+                const matchedMCQs = allMCQs.filter(
+                  m =>
+                    m.topicId === topic.id ||
+                    m.chapter === topic.id ||
+                    m.chapter === topic.title
+                );
+                const mcqCount = matchedMCQs.length > 0 ? matchedMCQs.length : (topic.mcqCount ?? 5);
+
+                // Real-time calculation of Lectures for this topic
+                const matchedLectures = allLectures.filter(l => l.topicId === topic.id);
+                const lectureCount = matchedLectures.length > 0 ? matchedLectures.length : (topic.lecturesCount ?? 0);
+
+                // Real-time calculation of Notes for this topic
+                const matchedNotes = allNotes.filter(n => n.topicId === topic.id);
+                const noteCount = matchedNotes.length > 0 ? matchedNotes.length : (topic.notesCount ?? 0);
+
                 return (
                   <TopicCard
                     key={topic.id}
                     topic={topic}
                     index={index}
-                    progressPercent={topicProgress}
-                    isCompleted={topicProgress >= 100}
+                    mcqCount={mcqCount}
+                    lectureCount={lectureCount}
+                    noteCount={noteCount}
                     onClick={() => {
                       playTap();
                       onSelectTopic(topic.id);

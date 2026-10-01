@@ -69,10 +69,22 @@ const defaultHomeState: NavigationState = {
   launchedTestId: null,
 };
 
+function getVisibleScreenKey(s: NavigationState): string {
+  if (s.selectedNoteId) return `note:${s.selectedNoteId}`;
+  if (s.selectedLectureId) return `lecture:${s.selectedLectureId}`;
+  if (s.selectedTopicMcqId) return `topic_mcq:${s.selectedTopicMcqId}`;
+  if (s.selectedTopicNotesListId) return `topic_notes:${s.selectedTopicNotesListId}`;
+  if (s.selectedTopicLecturesListId) return `topic_lectures:${s.selectedTopicLecturesListId}`;
+  if (s.selectedTopicId) return `topic:${s.selectedTopicId}`;
+  if (s.selectedSubjectId) return `subject:${s.selectedSubjectId}`;
+  if (s.launchedTestId) return `test:${s.launchedTestId}`;
+  return `page:${s.activePage}`;
+}
+
 const MainAppContent: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
 
-  // Navigation State with integrated Browser History Stack
+  // Navigation State with dedicated stack for guaranteed 1-click back response
   const [navState, setNavState] = useState<NavigationState>(() => {
     if (typeof window !== 'undefined' && window.history.state) {
       return {
@@ -83,20 +95,26 @@ const MainAppContent: React.FC = () => {
     return defaultHomeState;
   });
 
+  const historyStackRef = React.useRef<NavigationState[]>([navState]);
+
   // App settings & maintenance
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
 
-  // Sync with browser history popstate event (hardware/browser back button)
+  // Sync with browser hardware/browser back button
   useEffect(() => {
     try {
       if (!window.history.state) {
-        window.history.replaceState(defaultHomeState, '');
+        window.history.replaceState(navState, '');
       }
     } catch {}
 
     const handlePopState = (event: PopStateEvent) => {
-      if (event.state) {
+      if (historyStackRef.current.length > 1) {
+        historyStackRef.current.pop();
+        const prev = historyStackRef.current[historyStackRef.current.length - 1];
+        setNavState(prev || defaultHomeState);
+      } else if (event.state) {
         setNavState({
           ...defaultHomeState,
           ...event.state,
@@ -110,38 +128,76 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Navigate to a new screen while pushing into browser history
+  // Navigate to a new screen while pushing into stack & history
   const navigateTo = useCallback((changes: Partial<NavigationState>) => {
     setNavState((prev) => {
       const next: NavigationState = {
         ...prev,
         ...changes,
       };
-      try {
-        window.history.pushState(next, '');
-      } catch {}
+
+      // Only push if visible screen actually changes
+      const currentKey = getVisibleScreenKey(prev);
+      const nextKey = getVisibleScreenKey(next);
+
+      if (currentKey !== nextKey) {
+        historyStackRef.current.push(next);
+        try {
+          window.history.pushState(next, '');
+        } catch {}
+      }
+
       return next;
     });
   }, []);
 
-  // One-page back handler for both UI buttons and popstate triggers
+  // Instant 1-click guaranteed back handler for all UI back buttons
   const handleGoBack = useCallback(() => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      window.history.back();
-    } else {
-      // Fallback if accessed directly: step back logically without exiting
-      setNavState((prev) => {
-        if (prev.selectedNoteId) return { ...prev, selectedNoteId: null };
-        if (prev.selectedLectureId) return { ...prev, selectedLectureId: null };
-        if (prev.selectedTopicMcqId) return { ...prev, selectedTopicMcqId: null };
-        if (prev.selectedTopicNotesListId) return { ...prev, selectedTopicNotesListId: null };
-        if (prev.selectedTopicLecturesListId) return { ...prev, selectedTopicLecturesListId: null };
-        if (prev.selectedTopicId) return { ...prev, selectedTopicId: null };
-        if (prev.selectedSubjectId) return { ...prev, selectedSubjectId: null };
-        if (prev.activePage !== 'home') return { ...prev, activePage: 'home' };
-        return prev;
-      });
-    }
+    setNavState((current) => {
+      const currentKey = getVisibleScreenKey(current);
+
+      // 1. Pop from stack until reaching a state that is VISIBLY DIFFERENT from current screen
+      while (historyStackRef.current.length > 1) {
+        historyStackRef.current.pop();
+        const candidate = historyStackRef.current[historyStackRef.current.length - 1];
+        if (candidate && getVisibleScreenKey(candidate) !== currentKey) {
+          try {
+            window.history.replaceState(candidate, '');
+          } catch {}
+          return candidate;
+        }
+      }
+
+      // 2. Fallback: Direct deterministic single-level back step
+      let next: NavigationState;
+      if (current.selectedNoteId) {
+        next = { ...current, selectedNoteId: null };
+      } else if (current.selectedLectureId) {
+        next = { ...current, selectedLectureId: null };
+      } else if (current.selectedTopicMcqId) {
+        next = { ...current, selectedTopicMcqId: null };
+      } else if (current.selectedTopicNotesListId) {
+        next = { ...current, selectedTopicNotesListId: null };
+      } else if (current.selectedTopicLecturesListId) {
+        next = { ...current, selectedTopicLecturesListId: null };
+      } else if (current.selectedTopicId) {
+        next = { ...current, selectedTopicId: null };
+      } else if (current.selectedSubjectId) {
+        next = { ...current, selectedSubjectId: null };
+      } else if (current.launchedTestId) {
+        next = { ...current, launchedTestId: null, activePage: 'test' };
+      } else if (current.activePage !== 'home') {
+        next = { ...defaultHomeState, activePage: 'home' };
+      } else {
+        next = defaultHomeState;
+      }
+
+      historyStackRef.current = [next];
+      try {
+        window.history.replaceState(next, '');
+      } catch {}
+      return next;
+    });
   }, []);
 
   // Real-time onSnapshot listener on 'app-config' document in Firestore
@@ -375,6 +431,7 @@ const MainAppContent: React.FC = () => {
             onBack={handleGoBack}
             onOpenMCQs={() => navigateTo({ selectedTopicMcqId: navState.selectedTopicId })}
             onOpenNotes={() => navigateTo({ selectedTopicNotesListId: navState.selectedTopicId })}
+            onOpenDirectNote={(noteId) => navigateTo({ selectedNoteId: noteId })}
             onOpenLectures={() => navigateTo({ selectedTopicLecturesListId: navState.selectedTopicId })}
           />
         ) : navState.selectedSubjectId ? (

@@ -1,4 +1,4 @@
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Banner, AppSettings } from '../types';
 
@@ -9,18 +9,88 @@ export function normalizeBannerData(id: string, data: Record<string, any>): Bann
   const image =
     data.image ||
     data.imageUrl ||
+    data.image_url ||
     data.bannerImage ||
+    data.banner_image ||
+    data.img ||
+    data.imgUrl ||
     data.photo ||
     data.poster ||
     data.thumbnail ||
-    data.img ||
+    data.thumb ||
+    data.fileUrl ||
+    data.file_url ||
+    data.downloadUrl ||
+    data.download_url ||
+    data.storagePath ||
+    data.storage_path ||
+    data.src ||
+    data.picture ||
+    data.mediaUrl ||
+    data.media_url ||
+    data.cover ||
+    data.coverImage ||
     '';
 
-  const title = data.title || data.heading || data.name || data.bannerTitle || '';
-  const subtitle = data.subtitle || data.subTitle || data.description || data.desc || data.bannerSubtitle || '';
-  const buttonText = data.buttonText || data.btnText || data.ctaText || data.bannerButtonText || 'Explore Now';
-  const buttonUrl = data.buttonUrl || data.link || data.url || data.targetUrl || data.bannerUrl || '';
-  const actionType = data.actionType || data.type || (buttonUrl.startsWith('http') ? 'link' : undefined);
+  const title =
+    data.title ||
+    data.heading ||
+    data.name ||
+    data.bannerTitle ||
+    data.banner_title ||
+    data.header ||
+    data.label ||
+    '';
+
+  const subtitle =
+    data.subtitle ||
+    data.subTitle ||
+    data.sub_title ||
+    data.description ||
+    data.desc ||
+    data.bannerSubtitle ||
+    data.banner_subtitle ||
+    data.details ||
+    data.info ||
+    '';
+
+  const buttonText =
+    data.buttonText ||
+    data.button_text ||
+    data.btnText ||
+    data.btn_text ||
+    data.ctaText ||
+    data.cta_text ||
+    data.actionText ||
+    data.bannerButtonText ||
+    'Explore Now';
+
+  const buttonUrl =
+    data.buttonUrl ||
+    data.button_url ||
+    data.link ||
+    data.url ||
+    data.targetUrl ||
+    data.target_url ||
+    data.bannerUrl ||
+    data.banner_url ||
+    data.href ||
+    '';
+
+  const actionType =
+    data.actionType ||
+    data.action_type ||
+    data.type ||
+    (buttonUrl.startsWith('http') ? 'link' : undefined);
+
+  const isPublished =
+    data.published !== false &&
+    data.status !== 'draft' &&
+    data.status !== 'inactive' &&
+    data.active !== false &&
+    data.isActive !== false &&
+    data.visible !== false &&
+    data.isVisible !== false;
 
   return {
     id,
@@ -29,21 +99,18 @@ export function normalizeBannerData(id: string, data: Record<string, any>): Bann
     image,
     buttonText,
     buttonUrl,
-    buttonVisible: data.buttonVisible !== false,
+    buttonVisible: data.buttonVisible !== false && data.showButton !== false,
     actionType: (actionType as any) || 'link',
-    actionTargetId: data.actionTargetId || data.targetId,
-    order: data.order ?? 0,
-    published: data.published !== false && data.status !== 'draft',
+    actionTargetId: data.actionTargetId || data.targetId || data.subjectId || data.topicId,
+    badge: data.badge || data.tag || data.category || '',
+    order: data.order ?? data.position ?? data.priority ?? 0,
+    published: isPublished,
     ...data,
   };
 }
 
 /**
- * Real-time subscription to banners across all potential collections and admin configurations:
- * 1. 'banners' collection
- * 2. 'heroBanners' collection
- * 3. 'promotions' collection
- * 4. Merges settings-based banners (e.g. appSettings.banners array, bannerTitle, bannerImage)
+ * Real-time subscription to banners across all potential collections and admin configurations
  */
 export function subscribeToBanners(
   callback: (banners: Banner[]) => void,
@@ -59,7 +126,7 @@ export function subscribeToBanners(
     // 1. Collect from firestore collections
     for (const [, list] of sources) {
       for (const b of list) {
-        if (!seenIds.has(b.id) && b.published !== false && (b.title || b.image)) {
+        if (!seenIds.has(b.id) && b.published !== false && (b.title || b.image || b.subtitle)) {
           seenIds.add(b.id);
           allBanners.push(b);
         }
@@ -71,7 +138,7 @@ export function subscribeToBanners(
       if (Array.isArray(fallbackSettings.banners) && fallbackSettings.banners.length > 0) {
         fallbackSettings.banners.forEach((raw, idx) => {
           const norm = normalizeBannerData(raw.id || `settings-banner-${idx}`, raw);
-          if (!seenIds.has(norm.id) && norm.published !== false && (norm.title || norm.image)) {
+          if (!seenIds.has(norm.id) && norm.published !== false && (norm.title || norm.image || norm.subtitle)) {
             seenIds.add(norm.id);
             allBanners.push(norm);
           }
@@ -100,21 +167,7 @@ export function subscribeToBanners(
 
     allBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-    // If completely empty, supply default engaging curriculum banner
-    if (allBanners.length === 0) {
-      allBanners.push({
-        id: 'default-curriculum-banner',
-        title: 'Master Your Competitive Exams',
-        subtitle: 'Comprehensive syllabus lessons, video lectures, and practice MCQs with Veda AI mentor',
-        image: '',
-        buttonText: 'Start Learning',
-        buttonVisible: true,
-        actionType: 'link',
-        order: 0,
-        published: true,
-      });
-    }
-
+    // Send only real configured banners (empty array if no banners added)
     callback(allBanners);
   };
 
@@ -143,9 +196,22 @@ export function subscribeToBanners(
     }
   };
 
-  attachListener('banners');
-  attachListener('heroBanners');
-  attachListener('promotions');
+  // Common Admin collection names for banners
+  const collectionNames = [
+    'banners',
+    'banner',
+    'heroBanners',
+    'hero_banners',
+    'homeBanners',
+    'home_banners',
+    'promotions',
+    'sliders',
+    'slider',
+    'advertisements',
+    'ads',
+  ];
+
+  collectionNames.forEach(name => attachListener(name));
 
   // Trigger initial calculation
   updateMergedBanners();

@@ -11,11 +11,13 @@ import {
   Award,
   Bookmark,
   SkipForward,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { saveMCQAttempt } from '../services/attempts';
 import { isQuestionBookmarked, toggleBookmarkQuestion } from '../services/bookmarks';
+import { getExamSourceTag } from '../utils/examTag';
 import type { MCQ } from '../types';
 
 interface MCQQuizProps {
@@ -257,6 +259,7 @@ export const MCQQuiz: React.FC<MCQQuizProps> = ({
             {mcqs.map((q, qIndex) => {
               const userAns = selectedAnswers[qIndex];
               const isAnsCorrect = userAns === q.correctAnswer;
+              const examTag = getExamSourceTag(q);
               return (
                 <div
                   key={q.id || qIndex}
@@ -269,9 +272,19 @@ export const MCQQuiz: React.FC<MCQQuizProps> = ({
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <span className="font-bold text-slate-800">
-                      Q{qIndex + 1}. {q.question}
-                    </span>
+                    <div>
+                      <span className="font-bold text-slate-800">
+                        Q{qIndex + 1}. {q.question}
+                      </span>
+                      {examTag && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
+                            <Calendar className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                            <span>{examTag}</span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     {userAns !== undefined ? (
                       isAnsCorrect ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -330,9 +343,17 @@ export const MCQQuiz: React.FC<MCQQuizProps> = ({
     <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-md">
       {/* Progress & Question Counter */}
       <div className="flex items-center justify-between mb-3 text-xs text-slate-500 font-medium">
-        <span className="font-bold text-indigo-600">
-          Question {currentIndex + 1} of {mcqs.length}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-indigo-600">
+            Question {currentIndex + 1} of {mcqs.length}
+          </span>
+          {getExamSourceTag(currentMCQ) && (
+            <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
+              <Calendar className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+              <span>{getExamSourceTag(currentMCQ)}</span>
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {user && (
             <button
@@ -436,7 +457,11 @@ export const MCQQuiz: React.FC<MCQQuizProps> = ({
           }`}
         >
           <div className="flex items-center gap-1.5 font-bold mb-1">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            {isCorrect ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            ) : (
+              <XCircle className="w-4 h-4 text-rose-600" />
+            )}
             <span>{isCorrect ? 'Correct Answer!' : 'Incorrect Answer'}</span>
           </div>
           {currentMCQ.explanation ? (

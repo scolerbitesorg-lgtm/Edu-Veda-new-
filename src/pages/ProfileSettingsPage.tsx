@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { subscribeToAppSettings, defaultSettings } from '../services/settings';
+import { RealProgressTracker } from '../components/RealProgressTracker';
 import type { AppSettings } from '../types';
 
 interface ProfileSettingsPageProps {
@@ -111,7 +112,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({
                 playTap();
                 onBack();
               }}
-              className="p-1.5 -ml-1 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              className="p-2 -ml-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 touch-manipulation cursor-pointer active:scale-95 transition-all"
               aria-label="Go back"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -180,6 +181,9 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsPageProps> = ({
           <span>Edit Profile Details</span>
         </button>
       </div>
+
+      {/* Real Preparation Progress Tracker */}
+      <RealProgressTracker onSelectSubject={onBack} />
 
       {/* Preferences Section */}
       <div className="bg-white rounded-3xl border border-slate-200/80 divide-y divide-slate-100 shadow-xs">

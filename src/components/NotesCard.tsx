@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, FileDown, ChevronRight, Sparkles, Bookmark } from 'lucide-react';
+import { FileText, FileDown, ChevronRight, Bookmark } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAudio } from '../context/AudioContext';
 import { isNoteSaved, toggleSaveNote } from '../services/bookmarks';
@@ -21,15 +21,15 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={e => {
+      onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onClick();
         }
       }}
-      className="w-full bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_3px_12px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all text-left flex items-center justify-between group cursor-pointer select-none"
+      className="w-full bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_3px_12px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all text-left flex items-center justify-between group cursor-pointer select-none touch-manipulation"
     >
-      <div className="flex items-center gap-3.5 min-w-0 flex-1 pr-2">
+      <div className="flex items-center gap-3.5 min-w-0 flex-1 pr-2 pointer-events-none">
         <div
           className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
             isPdf
@@ -61,8 +61,7 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
           </div>
 
           <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
-            <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
-            <span className="truncate">High-Yield Revision &bull; Hindi/English</span>
+            <span className="truncate">Revision Notes &bull; Tap to Open</span>
           </p>
         </div>
       </div>
@@ -71,12 +70,12 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
         {user && (
           <button
             type="button"
-            onClick={e => {
+            onClick={(e) => {
               e.stopPropagation();
               playTap();
               toggleSaveNote(user.uid, note);
             }}
-            className={`p-1.5 rounded-lg transition-colors ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer pointer-events-auto ${
               isSaved
                 ? 'text-amber-500 bg-amber-50'
                 : 'text-slate-300 hover:text-slate-600 hover:bg-slate-100'
@@ -86,7 +85,7 @@ export const NotesCard: React.FC<NotesCardProps> = ({ note, onClick }) => {
             <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
           </button>
         )}
-        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
+        <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all pointer-events-none">
           <ChevronRight className="w-4 h-4" />
         </div>
       </div>

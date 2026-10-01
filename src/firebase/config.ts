@@ -3,16 +3,17 @@ import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { getAnalytics, isSupported } from 'firebase/analytics';
+import firebaseConfigJson from '../firebase-applet-config.json';
 
-// Default project configuration fallback
+// Default project configuration from applet config
 const defaultConfig = {
-  projectId: 'acoustic-energy-65p7n',
-  appId: '1:577865334119:web:3d8772a6c51ffd441303c2',
-  apiKey: 'edu-veda-public-client-key',
-  authDomain: 'acoustic-energy-65p7n.firebaseapp.com',
-  firestoreDatabaseId: 'ai-studio-remixeduveda-8ae4aac6-f0b5-4ed8-9dda-cd902e1b5c20',
-  storageBucket: 'acoustic-energy-65p7n.firebasestorage.app',
-  messagingSenderId: '577865334119',
+  projectId: firebaseConfigJson?.projectId || 'acoustic-energy-65p7n',
+  appId: firebaseConfigJson?.appId || '1:577865334119:web:3d8772a6c51ffd441303c2',
+  apiKey: firebaseConfigJson?.apiKey || 'edu-veda-public-client-key',
+  authDomain: firebaseConfigJson?.authDomain || 'acoustic-energy-65p7n.firebaseapp.com',
+  firestoreDatabaseId: firebaseConfigJson?.firestoreDatabaseId || 'ai-studio-remixeduveda-8ae4aac6-f0b5-4ed8-9dda-cd902e1b5c20',
+  storageBucket: firebaseConfigJson?.storageBucket || 'acoustic-energy-65p7n.firebasestorage.app',
+  messagingSenderId: firebaseConfigJson?.messagingSenderId || '577865334119',
 };
 
 const apiKeyEnv = (import.meta.env.VITE_FIREBASE_API_KEY || '').trim();
@@ -94,8 +95,8 @@ export async function testConnection(): Promise<boolean> {
     isConnected = true;
     return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase Firestore is offline. Operating in offline-cached mode.');
+    if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('unavailable') || error.message.includes('timeout'))) {
+      console.warn('Firebase Firestore operating in local/offline cached mode.');
       isConnected = false;
       return false;
     }
